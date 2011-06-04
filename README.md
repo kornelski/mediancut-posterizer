@@ -9,3 +9,7 @@ The goal of this tool is to make RGB/RGBA images more compressible, assuming tha
     posterize 30 < input.png > output.png
 
 Only stdin/stdout is supported. First (only) argument is number of levels to use, in addition to 0 and 255 which are always used.
+
+##GUI?
+
+Integrated in [ImageAlpha.app](http://pornel.net/imagealpha).
