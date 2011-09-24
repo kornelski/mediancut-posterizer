@@ -42,10 +42,10 @@ void reduce(const int maxcolors, float histogram[], int palette[])
     int numboxes=1;
     struct box boxes[256];
 
-    boxes[0].start=1; boxes[0].end=255; boxes[0].sum=0;
-    for(int i=1; i < 255; i++) {
-        boxes[0].sum += histogram[i];
-    }
+    boxes[0].start=1; // skip first and last entry, as they're always included
+    boxes[0].end=255;
+    boxes[0].sum=0;
+    for(int i=boxes[0].start; i < boxes[0].end; i++) boxes[0].sum += histogram[i];
     boxes[0].variance = variance(boxes[0], histogram);
 
     while(numboxes < maxcolors-1) {
