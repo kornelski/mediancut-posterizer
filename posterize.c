@@ -85,10 +85,13 @@ void reduce(const int maxcolors, float histogram[], int palette[])
     }
 }
 
-void remap(read_info img, int palette[])
+void remap(read_info img, const int *palette1, const int *palette2)
 {
     for(int i=0; i < img.height; i++) {
-        for(int x=0; x < img.width*4; x+=4) {
+        for(int j=0; j < img.width; j++) {
+            int x = j*4;
+            const int *palette = (i^j)&1 ? palette1 : palette2;
+
             int a = palette[img.row_pointers[i][x+3]];
             if (a) {
                 img.row_pointers[i][x] = palette[img.row_pointers[i][x]];
@@ -122,9 +125,52 @@ void intensity_histogram(read_info img, float histogram[])
     }
 }
 
+void dither_palette(int* palette, int* palette2, int dither)
+{
+    int nextval=0;
+    int lastval=0;
+    palette[0]=0;
+    palette[255]=255; // 0 and 255 are always included
+    memcpy(palette2, palette, sizeof(int)*256);
+
+    // front to back. When dithering, it's biased towards nextval
+    for(int val=0; val < 256; val++)
+    {
+        if (palette[val]==val) {
+            lastval = val;
+            for(int j=val+1; j < 256; j++) {
+                if (palette[j]==j) {nextval=j; break;}
+            }
+        }
+        if (!dither) {
+            palette[val] = (val - lastval) < (nextval - val) ? lastval : nextval;
+        } else {
+            palette[val] = (val - lastval)/2 < (nextval - val) ? lastval : nextval;
+        }
+    }
+
+    lastval=255; nextval=255;
+    // back to front, so dithering bias is the other way.
+    for(int val=255; val >=0; val--)
+    {
+        if (palette2[val]==val) {
+            lastval = val;
+            for(int j=val-1; j >= 0; j--) {
+                if (palette2[j]==j) {nextval=j; break;}
+            }
+        }
+        if (!dither) {
+            palette2[val] = (val - lastval) >= (nextval - val) ? lastval : nextval;
+        } else {
+            palette2[val] = (val - lastval)/2 >= (nextval - val) ? lastval : nextval;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     int maxcolors = argc == 2 ? atoi(argv[1]) : 0;
+    int dither=0;
 
     if (argc != 2 || maxcolors < 2 || maxcolors > 255) {
         fprintf(stderr, "Median Cut PNG Posterizer 1.0 (2011).\n\nSpecify number of levels 2-255 as an argument.\nImage is read from stdin and written to stdout\n\n%s 16 < in.png > out.png\n", argv[0]);
@@ -145,25 +191,12 @@ int main(int argc, char *argv[])
     if (histogram[0] && maxcolors>2) maxcolors--;
     if (histogram[255] && maxcolors>2) maxcolors--;
 
-    int palette[256] = {0};
+    int palette[256] = {0}, palette2[256];
     reduce(maxcolors, histogram, palette);
 
+    dither_palette(palette, palette2, dither);
 
-    int nextval=0;
-    int lastval=0;
-    palette[255]=255; // 0 and 255 are always included
-    for(int val=0; val < 256; val++)
-    {
-        if (palette[val]==val) {
-            lastval = val;
-            for(int j=val+1; j < 256; j++) {
-                if (palette[j]==j) {nextval=j; break;}
-            }
-        }
-        palette[val] = (val - lastval) < (nextval - val) ? lastval : nextval;
-    }
-
-    remap(img,palette);
+    remap(img, palette, palette2);
 
     if ((retval = rwpng_write_image_init(stdout, &img)) ||
         (retval = rwpng_write_image_whole(&img))) {
