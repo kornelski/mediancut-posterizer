@@ -266,11 +266,11 @@ pngquant_error rwpng_write_image_init(FILE *outfile, read_info *mainprog_ptr)
     if (mainprog_ptr->gamma > 0.0)
         png_set_gAMA(png_ptr, info_ptr, mainprog_ptr->gamma);
 
+    // disable filtering as posterization aims to optimize unchanged values
+    png_set_filter(png_ptr, PNG_FILTER_TYPE_BASE, PNG_FILTER_VALUE_NONE);
 
     /* write all chunks up to (but not including) first IDAT */
-
     png_write_info(png_ptr, info_ptr);
-
 
     /* if we wanted to write any more text info *after* the image data, we
      * would set up text struct(s) here and call png_set_text() again, with
@@ -283,14 +283,11 @@ pngquant_error rwpng_write_image_init(FILE *outfile, read_info *mainprog_ptr)
      * into bytes (one, two or four pixels per byte) */
 
     png_set_packing(png_ptr);
-/*  png_set_shift(png_ptr, &sig_bit);  to scale low-bit-depth values */
-
 
     /* make sure we save our pointers for use in writepng_encode_image() */
 
     mainprog_ptr->png_ptr = png_ptr;
     mainprog_ptr->info_ptr = info_ptr;
-
 
     /* OK, that's all we need to do for now; return happy */
     return SUCCESS;
