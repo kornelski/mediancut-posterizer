@@ -1,4 +1,4 @@
-#Median cut posterizer
+#Median Cut PNG Posterizer
 
 Reduces number of distinct color/alpha intensities in the image. Unlike typical posterization, which distributes levels evenly, this one tries to pick best levels using Median Cut.
 
@@ -12,4 +12,4 @@ Only stdin/stdout is supported. First (only) argument is number of levels to use
 
 ##GUI?
 
-Integrated in [ImageAlpha.app](http://pornel.net/imagealpha).
+Integrated in [ImageAlpha.app](http://pngmini.com).

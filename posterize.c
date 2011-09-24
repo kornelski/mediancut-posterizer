@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
     int maxcolors = argc == 2 ? atoi(argv[1]) : 0;
 
     if (argc != 2 || maxcolors < 2 || maxcolors > 255) {
-        fprintf(stderr, "Median cut PNG posterization.\n\nSpecify number of levels 2-255 as an argument.\nImage is read from stdin and written to stdout\n\n%s 16 < in.png > out.png\n", argv[0]);
+        fprintf(stderr, "Median Cut PNG Posterizer 1.0 (2011).\n\nSpecify number of levels 2-255 as an argument.\nImage is read from stdin and written to stdout\n\n%s 16 < in.png > out.png\n", argv[0]);
         return 1;
     }
 
