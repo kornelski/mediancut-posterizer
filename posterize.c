@@ -109,9 +109,10 @@ int main(int argc, char *argv[])
     }
 
     read_info img;
-    if (rwpng_read_image(stdin, &img)) {
+    pngquant_error retval;
+    if ((retval = rwpng_read_image(stdin, &img))) {
         fprintf(stderr, "Error: cannot read PNG from stdin\n");
-        return 1;
+        return retval;
     }
 
     float histogram[256]={0};
@@ -153,8 +154,11 @@ int main(int argc, char *argv[])
         }
     }
 
-    rwpng_write_image_init(stdout, &img);
-    rwpng_write_image_whole(&img);
+    if ((retval = rwpng_write_image_init(stdout, &img)) ||
+        (retval = rwpng_write_image_whole(&img))) {
+        fprintf(stderr, "Error: cannot write PNG to stdout\n");
+        return retval;
+    }
 
     return 0;
 }
