@@ -120,6 +120,22 @@ void remap(read_info img, int palette[])
     }
 }
 
+void intensity_histogram(read_info img, float histogram[])
+{
+    for(int i=0; i < img.height; i++) {
+        for(int x=0; x < img.width*4; x+=4) {
+            float a = 1.0-img.row_pointers[i][x+3]/255.0;
+            a = 1.0-a*a;
+
+            // opaque colors get more weight
+            histogram[img.row_pointers[i][x]] += a;
+            histogram[img.row_pointers[i][x+1]] += a;
+            histogram[img.row_pointers[i][x+2]] += a;
+            histogram[img.row_pointers[i][x+3]] += 0.9;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     int maxcolors = argc == 2 ? atoi(argv[1]) : 0;
@@ -137,18 +153,7 @@ int main(int argc, char *argv[])
     }
 
     float histogram[256]={0};
-    for(int i=0; i < img.height; i++) {
-        for(int x=0; x < img.width*4; x+=4) {
-            float a = 1.0-img.row_pointers[i][x+3]/255.0;
-            a = 1.0-a*a;
-
-            // opaque colors get more weight
-            histogram[img.row_pointers[i][x]] += a;
-            histogram[img.row_pointers[i][x+1]] += a;
-            histogram[img.row_pointers[i][x+2]] += a;
-            histogram[img.row_pointers[i][x+3]] += 0.9;
-        }
-    }
+    intensity_histogram(img, histogram);
 
     // reserve colors for black and white
     if (histogram[0] && maxcolors>2) maxcolors--;
@@ -158,7 +163,6 @@ int main(int argc, char *argv[])
     reduce(maxcolors, histogram, palette);
 
     remap(img,palette);
-
 
     if ((retval = rwpng_write_image_init(stdout, &img)) ||
         (retval = rwpng_write_image_whole(&img))) {
