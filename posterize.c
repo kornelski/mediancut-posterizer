@@ -86,7 +86,7 @@ void reduce(const int maxcolors, float histogram[], int palette[])
 
     int nextval=0;
     int lastval=0;
-    palette[255]=255;
+    palette[255]=255; // 0 and 255 are always included
     for(int val=0; val < 256; val++)
     {
         if (palette[val]==val) {
@@ -127,6 +127,10 @@ int main(int argc, char *argv[])
             histogram[img.row_pointers[i][x+3]] += 0.9;
         }
     }
+
+    // reserve colors for black and white
+    if (histogram[0] && maxcolors>2) maxcolors--;
+    if (histogram[255] && maxcolors>2) maxcolors--;
 
     int palette[256] = {0};
     reduce(maxcolors, histogram, palette);
