@@ -99,6 +99,27 @@ void reduce(const int maxcolors, float histogram[], int palette[])
     }
 }
 
+void remap(read_info img, int palette[])
+{
+    for(int i=0; i < img.height; i++) {
+        for(int x=0; x < img.width*4; x+=4) {
+            int a = palette[img.row_pointers[i][x+3]];
+            if (a) {
+                img.row_pointers[i][x] = palette[img.row_pointers[i][x]];
+                img.row_pointers[i][x+1] = palette[img.row_pointers[i][x+1]];
+                img.row_pointers[i][x+2] = palette[img.row_pointers[i][x+2]];
+                img.row_pointers[i][x+3] = a;
+            } else {
+                // clear "dirty alpha"
+                img.row_pointers[i][x] = 0;
+                img.row_pointers[i][x+1] = 0;
+                img.row_pointers[i][x+2] = 0;
+                img.row_pointers[i][x+3] = 0;
+            }
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     int maxcolors = argc == 2 ? atoi(argv[1]) : 0;
@@ -136,23 +157,8 @@ int main(int argc, char *argv[])
     int palette[256] = {0};
     reduce(maxcolors, histogram, palette);
 
-    for(int i=0; i < img.height; i++) {
-        for(int x=0; x < img.width*4; x+=4) {
-            int a = palette[img.row_pointers[i][x+3]];
-            if (a) {
-                img.row_pointers[i][x] = palette[img.row_pointers[i][x]];
-                img.row_pointers[i][x+1] = palette[img.row_pointers[i][x+1]];
-                img.row_pointers[i][x+2] = palette[img.row_pointers[i][x+2]];
-                img.row_pointers[i][x+3] = a;
-            } else {
-                // clear "dirty alpha"
-                img.row_pointers[i][x] = 0;
-                img.row_pointers[i][x+1] = 0;
-                img.row_pointers[i][x+2] = 0;
-                img.row_pointers[i][x+3] = 0;
-            }
-        }
-    }
+    remap(img,palette);
+
 
     if ((retval = rwpng_write_image_init(stdout, &img)) ||
         (retval = rwpng_write_image_whole(&img))) {
