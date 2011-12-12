@@ -8,14 +8,13 @@
 #include "rwpng.h"
 
 struct box {
-    int start,end;
-    float sum;
-    float variance;
+    double sum, variance;
+    int start, end;
 };
 
-float weighted_avg(struct box box, float histogram[])
+double weighted_avg(struct box box, double histogram[])
 {
-    float weight=0,sum=0;
+    double weight=0,sum=0;
     for(int val=box.start; val < box.end; val++) {
         weight += histogram[val];
         sum += val*histogram[val];
@@ -23,11 +22,11 @@ float weighted_avg(struct box box, float histogram[])
     return weight ? sum/weight : 0.0f;
 }
 
-float variance(struct box box, float histogram[])
+double variance(struct box box, double histogram[])
 {
-    float avg = weighted_avg(box,histogram);
+    double avg = weighted_avg(box,histogram);
 
-    float weight=0,sum=0;
+    double weight=0,sum=0;
     for(int val=box.start; val < box.end; val++) {
         weight += histogram[val];
         sum += (avg-val)*(avg-val)*histogram[val];
@@ -38,7 +37,7 @@ float variance(struct box box, float histogram[])
 /*
  1-dimensional median cut, using variance for "largest" box
 */
-void reduce(const int maxcolors, float histogram[], int palette[])
+void reduce(const int maxcolors, double histogram[], int palette[])
 {
     int numboxes=1;
     struct box boxes[256];
@@ -61,7 +60,7 @@ void reduce(const int maxcolors, float histogram[], int palette[])
         if (boxtosplit < 0) {
             break;
         }
-        float sum=0;
+        double sum=0;
         int val=boxes[boxtosplit].start;
         for(; val < boxes[boxtosplit].end-1; val++) {
             sum += histogram[val];
@@ -110,11 +109,11 @@ void remap(read_info img, const int *palette1, const int *palette2)
     }
 }
 
-void intensity_histogram(read_info img, float histogram[])
+void intensity_histogram(read_info img, double histogram[])
 {
     for(int i=0; i < img.height; i++) {
         for(int x=0; x < img.width*4; x+=4) {
-            float a = 1.0-img.row_pointers[i][x+3]/255.0;
+            double a = 1.0-img.row_pointers[i][x+3]/255.0;
             a = 1.0-a*a;
 
             // opaque colors get more weight
@@ -205,7 +204,7 @@ int main(int argc, char *argv[])
         return retval;
     }
 
-    float histogram[256]={0};
+    double histogram[256]={0};
     intensity_histogram(img, histogram);
 
     // reserve colors for black and white
