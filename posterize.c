@@ -184,7 +184,7 @@ void usage(const char *exepath)
 {
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
-    fprintf(stderr, "Median Cut PNG Posterizer 1.1 (2011).\n" \
+    fprintf(stderr, "Median Cut PNG Posterizer 1.2 (2011).\n" \
             "Usage: %s [-d] levels\n\n" \
             "Specify number of levels 2-255 as an argument. -d enables dithering\n" \
             "Image is always read from stdin and written to stdout.\n"
