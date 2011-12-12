@@ -36,6 +36,23 @@ double variance(struct box box, double histogram[])
     return weight ? sum/weight : 0.0f;
 }
 
+
+double palette_mse(double histogram[], int palette[])
+{
+    int tmp[256];
+    memcpy(tmp, palette, 256*sizeof(palette[0]));
+    interpolate_palette_front(tmp, 0);
+
+    double mse=0, hist_total=0;
+    for (int i=0; i < 256; i++) {
+        int best = tmp[i];
+        mse += (i-best)*(i-best) * histogram[i];
+
+        hist_total += histogram[i];
+    }
+    return mse / hist_total;
+}
+
 /*
  1-dimensional median cut, using variance for "largest" box
 */
@@ -84,7 +101,7 @@ void reduce(const int maxcolors, double histogram[], int palette[])
     for(int box=0; box < numboxes; box++) {
         int value = roundf(weighted_avg(boxes[box],histogram));
         palette[value] = value;
-    }
+}
 }
 
 void remap(read_info img, const int *palette1, const int *palette2)
@@ -191,6 +208,31 @@ void usage(const char *exepath)
             "%s -d 16 < in.png > out.png\n", name, name);
 }
 
+void voronoi(double histogram[], int palette[])
+{
+    interpolate_palette_front(palette, 0);
+
+    double counts[256] = {0};
+    double sums[256] = {0};
+
+    // remap palette
+    for (int i=0; i < 256; i++) {
+        int best = palette[i];
+        counts[best] += histogram[i];
+        sums[best] += histogram[i] * (double)i;
+    }
+
+    memset(palette, 0, 256*sizeof(palette[0]));
+
+    // rebuild palette from remapped averages
+    for(int i=0; i < 256; i++) {
+        if (counts[i]) {
+            int value = round(sums[i]/counts[i]);
+            palette[value] = value;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     int argn=1;
@@ -226,6 +268,14 @@ int main(int argc, char *argv[])
 
     int palette[256] = {0}, palette2[256];
     reduce(maxcolors, histogram, palette);
+
+    double last_mse = INFINITY;
+    for(int j=0; j < 100; j++) {
+        voronoi(histogram, palette);
+        double new_mse = palette_mse(histogram, palette);
+        if (new_mse == last_mse) break;
+        last_mse = new_mse;
+    }
 
     dither_palette(palette, palette2, dither);
 
