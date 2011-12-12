@@ -128,6 +128,8 @@ void intensity_histogram(read_info img, double histogram[])
 void interpolate_palette_front(int *palette, int dither)
 {
     int nextval=0, lastval=0;
+    palette[0]=0;
+    palette[255]=255; // 0 and 255 are always included
 
     for(int val=0; val < 256; val++) {
         if (palette[val]==val) {
@@ -147,6 +149,9 @@ void interpolate_palette_front(int *palette, int dither)
 void interpolate_palette_back(int *palette2, int dither)
 {
     int nextval=255, lastval=255;
+    palette2[0]=0;
+    palette2[255]=255; // 0 and 255 are always included
+
     for(int val=255; val >=0; val--) {
         if (palette2[val]==val) {
             lastval = val;
@@ -164,8 +169,6 @@ void interpolate_palette_back(int *palette2, int dither)
 
 void dither_palette(int* palette, int* palette2, int dither)
 {
-    palette[0]=0;
-    palette[255]=255; // 0 and 255 are always included
     memcpy(palette2, palette, sizeof(int)*256);
 
     // front to back. When dithering, it's biased towards nextval
