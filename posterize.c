@@ -125,17 +125,11 @@ void intensity_histogram(read_info img, double histogram[])
     }
 }
 
-void dither_palette(int* palette, int* palette2, int dither)
+void interpolate_palette_front(int *palette, int dither)
 {
-    int nextval=0;
-    int lastval=0;
-    palette[0]=0;
-    palette[255]=255; // 0 and 255 are always included
-    memcpy(palette2, palette, sizeof(int)*256);
+    int nextval=0, lastval=0;
 
-    // front to back. When dithering, it's biased towards nextval
-    for(int val=0; val < 256; val++)
-    {
+    for(int val=0; val < 256; val++) {
         if (palette[val]==val) {
             lastval = val;
             for(int j=val+1; j < 256; j++) {
@@ -148,11 +142,12 @@ void dither_palette(int* palette, int* palette2, int dither)
             palette[val] = (val - lastval)/2 < (nextval - val) ? lastval : nextval;
         }
     }
+}
 
-    lastval=255; nextval=255;
-    // back to front, so dithering bias is the other way.
-    for(int val=255; val >=0; val--)
-    {
+void interpolate_palette_back(int *palette2, int dither)
+{
+    int nextval=255, lastval=255;
+    for(int val=255; val >=0; val--) {
         if (palette2[val]==val) {
             lastval = val;
             for(int j=val-1; j >= 0; j--) {
@@ -165,6 +160,19 @@ void dither_palette(int* palette, int* palette2, int dither)
             palette2[val] = (val - lastval)/2 >= (nextval - val) ? lastval : nextval;
         }
     }
+}
+
+void dither_palette(int* palette, int* palette2, int dither)
+{
+    palette[0]=0;
+    palette[255]=255; // 0 and 255 are always included
+    memcpy(palette2, palette, sizeof(int)*256);
+
+    // front to back. When dithering, it's biased towards nextval
+    interpolate_palette_front(palette, dither);
+
+    // back to front, so dithering bias is the other way.
+    interpolate_palette_back(palette2, dither);
 }
 
 void usage(const char *exepath)
