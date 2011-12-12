@@ -53,6 +53,16 @@ double palette_mse(double histogram[], int palette[])
     return mse / hist_total;
 }
 
+void palette_from_boxes(struct box boxes[], int numboxes, double histogram[], int palette[])
+{
+    memset(palette, 0, 256*sizeof(palette[0]));
+
+    for(int box=0; box < numboxes; box++) {
+        int value = round(weighted_avg(boxes[box],histogram));
+        palette[value] = value;
+    }
+}
+
 /*
  1-dimensional median cut, using variance for "largest" box
 */
@@ -98,10 +108,7 @@ void reduce(const int maxcolors, double histogram[], int palette[])
         numboxes++;
     }
 
-    for(int box=0; box < numboxes; box++) {
-        int value = roundf(weighted_avg(boxes[box],histogram));
-        palette[value] = value;
-}
+    palette_from_boxes(boxes, numboxes, histogram, palette);
 }
 
 void remap(read_info img, const int *palette1, const int *palette2)
@@ -266,7 +273,7 @@ int main(int argc, char *argv[])
     if (histogram[0] && maxcolors>2) maxcolors--;
     if (histogram[255] && maxcolors>2) maxcolors--;
 
-    int palette[256] = {0}, palette2[256];
+    int palette[256], palette2[256];
     reduce(maxcolors, histogram, palette);
 
     double last_mse = INFINITY;
