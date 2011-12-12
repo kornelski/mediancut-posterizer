@@ -31,9 +31,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
-#include "png.h"        /* libpng header; includes zlib.h */
-#include "rwpng.h"      /* typedefs, common macros, public prototypes */
+
+#include "png.h"
+#include "zlib.h"
+#include "rwpng.h"
 
 static void rwpng_error_handler(png_structp png_ptr, png_const_charp msg);
 
@@ -91,13 +92,6 @@ pngquant_error rwpng_read_image(FILE *infile, read_info *mainprog_ptr)
         return PNG_OUT_OF_MEMORY_ERROR;   /* out of memory */
     }
 
-
-    /* GRR TO DO:  use end_info struct */
-    /* we could create a second info struct here (end_info), but it's only
-     * useful if we want to keep pre- and post-IDAT chunk info separated
-     * (mainly for PNG-aware image editors and converters) */
-
-
     /* setjmp() must be called in every function that calls a non-trivial
      * libpng function */
 
@@ -125,10 +119,7 @@ pngquant_error rwpng_read_image(FILE *infile, read_info *mainprog_ptr)
      * transparency chunks to full alpha channel; strip 16-bit-per-sample
      * images to 8 bits per sample; and convert grayscale to RGB[A] */
 
-    /* GRR TO DO:  handle each of GA, RGB, RGBA without conversion to RGBA */
-    /* GRR TO DO:  allow sub-8-bit quantization? */
     /* GRR TO DO:  preserve all safe-to-copy ancillary PNG chunks */
-    /* GRR TO DO:  get and map background color? */
 
     if (!(color_type & PNG_COLOR_MASK_ALPHA)) {
         /* GRP:  expand palette to RGB, and grayscale or RGB to GA or RGBA */
@@ -142,10 +133,9 @@ pngquant_error rwpng_read_image(FILE *infile, read_info *mainprog_ptr)
     if (png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS))
         png_set_expand(png_ptr);
  */
-    /* GRR TO DO:  handle 16-bps data natively? */
     if (bit_depth == 16)
         png_set_strip_16(png_ptr);
-    /* GRR TO DO:  probably want to handle this separately, without expansion */
+
     if (color_type == PNG_COLOR_TYPE_GRAY ||
         color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
         png_set_gray_to_rgb(png_ptr);
@@ -156,6 +146,8 @@ pngquant_error rwpng_read_image(FILE *infile, read_info *mainprog_ptr)
     if (!png_get_gAMA(png_ptr, info_ptr, &mainprog_ptr->gamma)) {
         mainprog_ptr->gamma = 0.45455;
     }
+
+    png_set_interlace_handling(png_ptr);
 
     /* all transformations have been registered; now update info_ptr data,
      * get rowbytes and channels, and allocate image memory */
@@ -177,7 +169,6 @@ pngquant_error rwpng_read_image(FILE *infile, read_info *mainprog_ptr)
         mainprog_ptr->rgba_data = NULL;
         return PNG_OUT_OF_MEMORY_ERROR;
     }
-
 
     /* set the individual row_pointers to point at the correct offsets */
 

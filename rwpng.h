@@ -29,39 +29,32 @@
 
   ---------------------------------------------------------------------------*/
 
+#include "png.h"    /* libpng header; includes zlib.h */
+
 #ifndef TRUE
 #  define TRUE 1
 #  define FALSE 0
 #endif
 
-#ifndef MAX
-#  define MAX(a,b)  ((a) > (b)? (a) : (b))
-#  define MIN(a,b)  ((a) < (b)? (a) : (b))
-#endif
-
-#ifdef DEBUG
-#  define Trace(x)  {fprintf x ; fflush(stderr); fflush(stdout);}
-#else
-#  define Trace(x)  ;
-#endif
-
-#include <setjmp.h>
-
 typedef enum {
     SUCCESS = 0,
+    MISSING_ARGUMENT = 1,
     READ_ERROR = 2,
+    INVALID_ARGUMENT = 4,
     TOO_MANY_COLORS = 5,
+    TOO_LOW_QUALITY = 6,
     NOT_OVERWRITING_ERROR = 15,
     CANT_WRITE_ERROR = 16,
     OUT_OF_MEMORY_ERROR = 17,
+    WRONG_ARCHITECTURE = 18, // Missing SSE3
     PNG_OUT_OF_MEMORY_ERROR = 24,
     INIT_OUT_OF_MEMORY_ERROR = 34,
-    INTERNAL_LOGIC_ERROR = 18,
     BAD_SIGNATURE_ERROR = 21,
     LIBPNG_FATAL_ERROR = 25,
     LIBPNG_INIT_ERROR = 35,
     LIBPNG_WRITE_ERROR = 55,
     LIBPNG_WRITE_WHOLE_ERROR = 45,
+
 } pngquant_error;
 
 typedef struct {
