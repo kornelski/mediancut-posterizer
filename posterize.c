@@ -77,7 +77,7 @@ void reduce(const int maxcolors, double histogram[], int palette[])
     for(int i=boxes[0].start; i < boxes[0].end; i++) boxes[0].sum += histogram[i];
     boxes[0].variance = variance(boxes[0], histogram);
 
-    while(numboxes < maxcolors-1) {
+    while(numboxes < maxcolors) {
         int boxtosplit=-1;
         int largest=0;
         for(int box=0; box < numboxes; box++) {
