@@ -138,14 +138,13 @@ static void intensity_histogram(read_info img, double histogram[])
 {
     for(int i=0; i < img.height; i++) {
         for(int x=0; x < img.width*4; x+=4) {
-            double a = 1.0-img.row_pointers[i][x+3]/255.0;
-            a = 1.0-a*a;
+            double a = img.row_pointers[i][x+3]/255.0;
 
             // opaque colors get more weight
             histogram[img.row_pointers[i][x]] += a;
             histogram[img.row_pointers[i][x+1]] += a;
             histogram[img.row_pointers[i][x+2]] += a;
-            histogram[img.row_pointers[i][x+3]] += 0.9;
+            histogram[img.row_pointers[i][x+3]] += 1.0 - a;
         }
     }
 }
