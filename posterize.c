@@ -7,6 +7,8 @@
 #include "png.h"
 #include "rwpng.h"
 
+void interpolate_palette_front(int palette[], int dither);
+
 struct box {
     double sum, variance;
     int start, end;
@@ -125,7 +127,7 @@ void intensity_histogram(read_info img, double histogram[])
     }
 }
 
-void interpolate_palette_front(int *palette, int dither)
+void interpolate_palette_front(int palette[], int dither)
 {
     int nextval=0, lastval=0;
     palette[0]=0;
@@ -146,7 +148,7 @@ void interpolate_palette_front(int *palette, int dither)
     }
 }
 
-void interpolate_palette_back(int *palette2, int dither)
+void interpolate_palette_back(int palette2[], int dither)
 {
     int nextval=255, lastval=255;
     palette2[0]=0;
@@ -167,7 +169,7 @@ void interpolate_palette_back(int *palette2, int dither)
     }
 }
 
-void dither_palette(int* palette, int* palette2, int dither)
+void dither_palette(int palette[], int palette2[], int dither)
 {
     memcpy(palette2, palette, sizeof(int)*256);
 
