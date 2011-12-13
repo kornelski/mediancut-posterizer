@@ -7,14 +7,14 @@
 #include "png.h"
 #include "rwpng.h"
 
-void interpolate_palette_front(int palette[], int dither);
+static void interpolate_palette_front(int palette[], int dither);
 
 struct box {
     double sum, variance;
     int start, end;
 };
 
-double weighted_avg(struct box box, double histogram[])
+static double weighted_avg(struct box box, double histogram[])
 {
     double weight=0,sum=0;
     for(int val=box.start; val < box.end; val++) {
@@ -24,7 +24,7 @@ double weighted_avg(struct box box, double histogram[])
     return weight ? sum/weight : 0.0f;
 }
 
-double variance(struct box box, double histogram[])
+static double variance(struct box box, double histogram[])
 {
     double avg = weighted_avg(box,histogram);
 
@@ -36,8 +36,7 @@ double variance(struct box box, double histogram[])
     return weight ? sum/weight : 0.0f;
 }
 
-
-double palette_mse(double histogram[], int palette[])
+static double palette_mse(double histogram[], int palette[])
 {
     int tmp[256];
     memcpy(tmp, palette, 256*sizeof(palette[0]));
@@ -53,7 +52,7 @@ double palette_mse(double histogram[], int palette[])
     return mse / hist_total;
 }
 
-void palette_from_boxes(struct box boxes[], int numboxes, double histogram[], int palette[])
+static void palette_from_boxes(struct box boxes[], int numboxes, double histogram[], int palette[])
 {
     memset(palette, 0, 256*sizeof(palette[0]));
 
@@ -66,7 +65,7 @@ void palette_from_boxes(struct box boxes[], int numboxes, double histogram[], in
 /*
  1-dimensional median cut, using variance for "largest" box
 */
-void reduce(const int maxcolors, double histogram[], int palette[])
+static void reduce(const int maxcolors, double histogram[], int palette[])
 {
     int numboxes=1;
     struct box boxes[256];
@@ -111,7 +110,7 @@ void reduce(const int maxcolors, double histogram[], int palette[])
     palette_from_boxes(boxes, numboxes, histogram, palette);
 }
 
-void remap(read_info img, const int *palette1, const int *palette2)
+static void remap(read_info img, const int *palette1, const int *palette2)
 {
     for(int i=0; i < img.height; i++) {
         for(int j=0; j < img.width; j++) {
@@ -135,7 +134,7 @@ void remap(read_info img, const int *palette1, const int *palette2)
     }
 }
 
-void intensity_histogram(read_info img, double histogram[])
+static void intensity_histogram(read_info img, double histogram[])
 {
     for(int i=0; i < img.height; i++) {
         for(int x=0; x < img.width*4; x+=4) {
@@ -151,7 +150,7 @@ void intensity_histogram(read_info img, double histogram[])
     }
 }
 
-void interpolate_palette_front(int palette[], int dither)
+static void interpolate_palette_front(int palette[], int dither)
 {
     int nextval=0, lastval=0;
     palette[0]=0;
@@ -172,7 +171,7 @@ void interpolate_palette_front(int palette[], int dither)
     }
 }
 
-void interpolate_palette_back(int palette2[], int dither)
+static void interpolate_palette_back(int palette2[], int dither)
 {
     int nextval=255, lastval=255;
     palette2[0]=0;
@@ -193,7 +192,7 @@ void interpolate_palette_back(int palette2[], int dither)
     }
 }
 
-void dither_palette(int palette[], int palette2[], int dither)
+static void dither_palette(int palette[], int palette2[], int dither)
 {
     memcpy(palette2, palette, sizeof(int)*256);
 
@@ -204,7 +203,7 @@ void dither_palette(int palette[], int palette2[], int dither)
     interpolate_palette_back(palette2, dither);
 }
 
-void usage(const char *exepath)
+static void usage(const char *exepath)
 {
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
@@ -215,7 +214,7 @@ void usage(const char *exepath)
             "%s -d 16 < in.png > out.png\n", name, name);
 }
 
-void voronoi(double histogram[], int palette[])
+static void voronoi(double histogram[], int palette[])
 {
     interpolate_palette_front(palette, 0);
 
