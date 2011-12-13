@@ -270,8 +270,9 @@ int main(int argc, char *argv[])
     intensity_histogram(img, histogram);
 
     // reserve colors for black and white
-    if (histogram[0] && maxcolors>2) maxcolors--;
-    if (histogram[255] && maxcolors>2) maxcolors--;
+    // and omit them from histogram to avoid confusing median cut
+    if (histogram[0] && maxcolors>2) {maxcolors--; histogram[0]=0;}
+    if (histogram[255] && maxcolors>2) {maxcolors--; histogram[255]=0;}
 
     int palette[256], palette2[256];
     reduce(maxcolors, histogram, palette);
