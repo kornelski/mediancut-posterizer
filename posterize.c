@@ -33,12 +33,11 @@ static double variance_in_range(const unsigned int start, const unsigned int end
 {
     const double avg = weighted_avg(start, end, histogram);
 
-    double weight=0,sum=0;
+    double sum=0;
     for(unsigned int val=start; val < end; val++) {
-        weight += histogram[val];
         sum += (avg-val)*(avg-val)*histogram[val];
     }
-    return weight ? sum/weight : 0;
+    return sum;
 }
 
 static double variance(const struct box box, const double histogram[])
