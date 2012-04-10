@@ -37,7 +37,7 @@ static double variance(struct box box, double histogram[])
         weight += histogram[val];
         sum += (avg-val)*(avg-val)*histogram[val];
     }
-    return weight ? sum/weight : 0.0f;
+    return weight ? sum/weight : 0;
 }
 
 // mse = mean square error. Estimates how well palette "fits" the histogram.
@@ -149,18 +149,30 @@ static void remap(read_info img, const int *palette1, const int *palette2)
     }
 }
 
+// usually RGBA images are stored/rendered in "premultiplied" format which is R*A, G*A, B*A
+// this causes loss of precision, so it may be a good idea to posterize to this value anyway
+inline static unsigned int premultiplied_alpha_rounding(unsigned int value, unsigned int alpha)
+{
+    return value * alpha / alpha;
+}
+
 // it doesn't count unique colors, only intensity values of all channels
 static void intensity_histogram(read_info img, double histogram[])
 {
     for(int i=0; i < img.height; i++) {
+        const unsigned char *const row = img.row_pointers[i];
         for(int x=0; x < img.width*4; x+=4) {
-            double a = img.row_pointers[i][x+3]/255.0;
+            const unsigned int alpha = row[x+3];
+            if (alpha) {
+                // opaque colors get more weight
+                const double weight = alpha/255.0;
 
-            // opaque colors get more weight
-            histogram[img.row_pointers[i][x]] += a;
-            histogram[img.row_pointers[i][x+1]] += a;
-            histogram[img.row_pointers[i][x+2]] += a;
-            histogram[img.row_pointers[i][x+3]] += 1.0 - a;
+                histogram[premultiplied_alpha_rounding(row[x], alpha)] += weight;
+                histogram[premultiplied_alpha_rounding(row[x+1], alpha)] += weight;
+                histogram[premultiplied_alpha_rounding(row[x+2], alpha)] += weight;
+                histogram[row[x+3]] += 1.0;
+            }
+            else histogram[0] += 4.0;
         }
     }
 }
