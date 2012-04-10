@@ -52,7 +52,7 @@ static double palette_mse(const double histogram[], const unsigned int palette[]
     memcpy(tmp, palette, 256*sizeof(palette[0]));
 
     // the input palette has gaps
-    interpolate_palette_front(tmp, 0);
+    interpolate_palette_front(tmp, false);
 
     double mse=0, hist_total=0;
     for (int i=0; i < 256; i++) {
@@ -209,8 +209,8 @@ static void interpolate_palette_front(unsigned int palette[], const bool dither)
     }
 }
 
-// interpolates back-to-front. If dither is true, it will bias towards one side (other than interpolate_palette_front)
-static void interpolate_palette_back(unsigned int palette2[], const bool dither)
+// interpolates back-to-front. Always biased for dither.
+static void interpolate_palette_back(unsigned int palette2[])
 {
     unsigned int nextval=255, lastval=255;
     palette2[0]=0;
@@ -223,23 +223,19 @@ static void interpolate_palette_back(unsigned int palette2[], const bool dither)
                 if (palette2[j]==j) {nextval=j; break;}
             }
         }
-        if (!dither) {
-            palette2[val] = (val - lastval) >= (nextval - val) ? lastval : nextval;
-        } else {
-            palette2[val] = (val - lastval)/2 >= (nextval - val) ? lastval : nextval;
-        }
+        palette2[val] = (val - lastval)/2 >= (nextval - val) ? lastval : nextval;
     }
 }
 
-static void dither_palette(unsigned int palette[], unsigned int palette2[], const bool dither)
+static void dither_palette(unsigned int palette[], unsigned int palette2[])
 {
     memcpy(palette2, palette, sizeof(unsigned int)*256);
 
     // front to back. When dithering, it's biased towards nextval
-    interpolate_palette_front(palette, dither);
+    interpolate_palette_front(palette, true);
 
     // back to front, so dithering bias is the other way.
-    interpolate_palette_back(palette2, dither);
+    interpolate_palette_back(palette2);
 }
 
 static void usage(const char *exepath)
@@ -257,7 +253,7 @@ static void usage(const char *exepath)
 // this shifts palette towards local optimum
 static void voronoi(const double histogram[], unsigned int palette[])
 {
-    interpolate_palette_front(palette, 0);
+    interpolate_palette_front(palette, false);
 
     double counts[256] = {0};
     double sums[256] = {0};
@@ -325,9 +321,13 @@ int main(int argc, char *argv[])
         last_mse = new_mse;
     }
 
-    dither_palette(palette, palette2, dither);
-
-    remap(img, palette, palette2);
+    if (dither) {
+        dither_palette(palette, palette2);
+        remap(img, palette, palette2);
+    } else {
+        interpolate_palette_front(palette, false);
+        remap(img, palette, palette);
+    }
 
     if ((retval = rwpng_write_image_init(stdout, &img)) ||
         (retval = rwpng_write_image_whole(&img))) {
