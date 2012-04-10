@@ -10,11 +10,19 @@
 
 static void interpolate_palette_front(unsigned int palette[], const bool dither);
 
-// Converts gamma 2.2 to linear unit value. Linear is required for preserving brightness when dithering.
-inline static double gamma_to_linear(const unsigned int value)
+// Converts gamma 2.0 (approx of 2.2) to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
+inline static double gamma_to_linear(const double value)
 {
-    return pow(value/255.0, 1.0/2.2);
+    return sqrt(value/255.0);
 }
+
+// Reverses gamma_to_linear. *256 is not off-by-one error.
+inline static unsigned int linear_to_gamma(const double value)
+{
+    const double g = value*value*256.0;
+    return g < 255.0 ? g : 255;
+}
+
 
 // median cut "box" in this implementation is actually a line,
 // since it only needs to track lowest/highest intensity
@@ -24,12 +32,12 @@ struct box {
 };
 
 // average values in a "box" proportionally to frequency of their occurence
-static double weighted_avg(const unsigned int start, const unsigned int end, const double histogram[])
+static double weighted_avg_linear(const unsigned int start, const unsigned int end, const double histogram[])
 {
     double weight=0,sum=0;
     for(unsigned int val=start; val < end; val++) {
         weight += histogram[val];
-        sum += val*histogram[val];
+        sum += gamma_to_linear(val)*histogram[val];
     }
     return weight ? sum/weight : 0;
 }
@@ -37,11 +45,12 @@ static double weighted_avg(const unsigned int start, const unsigned int end, con
 // variance (AKA second moment) of the box. Measures how much "spread" the values are
 static double variance_in_range(const unsigned int start, const unsigned int end, const double histogram[])
 {
-    const double avg = weighted_avg(start, end, histogram);
+    const double avg = weighted_avg_linear(start, end, histogram);
 
     double sum=0;
     for(unsigned int val=start; val < end; val++) {
-        sum += (avg-val)*(avg-val)*histogram[val];
+        const double delta = avg-gamma_to_linear(val);
+        sum += delta*delta*histogram[val];
     }
     return sum;
 }
@@ -62,8 +71,8 @@ static double palette_error(const double histogram[], const unsigned int palette
 
     double se=0;
     for (int i=0; i < 256; i++) {
-        int best = palette[i];
-        se += (i-best)*(i-best) * histogram[i];
+        double delta = gamma_to_linear(i)-gamma_to_linear(palette[i]);
+        se += delta*delta*histogram[i];
     }
     return se;
 }
@@ -75,7 +84,7 @@ static void palette_from_boxes(const struct box boxes[], const int numboxes, con
     memset(palette, 0, 256*sizeof(palette[0]));
 
     for(int box=0; box < numboxes; box++) {
-        int value = round(weighted_avg(boxes[box].start, boxes[box].end, histogram));
+        int value = linear_to_gamma(weighted_avg_linear(boxes[box].start, boxes[box].end, histogram));
         palette[value] = value;
     }
 }
