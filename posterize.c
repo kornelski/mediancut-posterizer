@@ -10,6 +10,12 @@
 
 static void interpolate_palette_front(unsigned int palette[], const bool dither);
 
+// Converts gamma 2.2 to linear unit value. Linear is required for preserving brightness when dithering.
+inline static double gamma_to_linear(const unsigned int value)
+{
+    return pow(value/255.0, 1.0/2.2);
+}
+
 // median cut "box" in this implementation is actually a line,
 // since it only needs to track lowest/highest intensity
 struct box {
@@ -199,10 +205,12 @@ static void interpolate_palette_front(unsigned int palette[], const bool dither)
                 if (palette[j]==j) {nextval=j; break;}
             }
         }
+        const double lastvaldiff = (gamma_to_linear(val) - gamma_to_linear(lastval));
+        const double nextvaldiff = (gamma_to_linear(nextval) - gamma_to_linear(val));
         if (!dither) {
-            palette[val] = (val - lastval) < (nextval - val) ? lastval : nextval;
+            palette[val] = lastvaldiff < nextvaldiff ? lastval : nextval;
         } else {
-            palette[val] = (val - lastval)/2 < (nextval - val) ? lastval : nextval;
+            palette[val] = lastvaldiff/2 < nextvaldiff ? lastval : nextval;
         }
     }
 }
@@ -221,7 +229,9 @@ static void interpolate_palette_back(unsigned int palette2[])
                 if (palette2[j]==j) {nextval=j; break;}
             }
         }
-        palette2[val] = (val - lastval)/2 >= (nextval - val) ? lastval : nextval;
+        const double lastvaldiff = (gamma_to_linear(val) - gamma_to_linear(lastval));
+        const double nextvaldiff = (gamma_to_linear(nextval) - gamma_to_linear(val));
+        palette2[val] = lastvaldiff/2 >= nextvaldiff ? lastval : nextval;
     }
 }
 
