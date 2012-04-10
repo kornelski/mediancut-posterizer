@@ -45,23 +45,21 @@ static double variance(const struct box box, const double histogram[])
     return variance_in_range(box.start, box.end, histogram);
 }
 
-// mse = mean square error. Estimates how well palette "fits" the histogram.
-static double palette_mse(const double histogram[], const unsigned int palette[])
+// Square error. Estimates how well palette "fits" the histogram.
+static double palette_error(const double histogram[], const unsigned int palette_orig[])
 {
-    unsigned int tmp[256];
-    memcpy(tmp, palette, 256*sizeof(palette[0]));
+    unsigned int palette[256];
+    memcpy(palette, palette_orig, 256*sizeof(palette[0]));
 
     // the input palette has gaps
-    interpolate_palette_front(tmp, false);
+    interpolate_palette_front(palette, false);
 
-    double mse=0, hist_total=0;
+    double se=0;
     for (int i=0; i < 256; i++) {
-        int best = tmp[i];
-        mse += (i-best)*(i-best) * histogram[i];
-
-        hist_total += histogram[i];
+        int best = palette[i];
+        se += (i-best)*(i-best) * histogram[i];
     }
-    return mse / hist_total;
+    return se;
 }
 
 // converts boxes to palette.
@@ -313,12 +311,12 @@ int main(int argc, char *argv[])
     unsigned int palette[256], palette2[256];
     reduce(maxcolors, histogram, palette);
 
-    double last_mse = INFINITY;
+    double last_err = INFINITY;
     for(unsigned int j=0; j < 100; j++) {
         voronoi(histogram, palette);
-        double new_mse = palette_mse(histogram, palette);
-        if (new_mse == last_mse) break;
-        last_mse = new_mse;
+        double new_err = palette_error(histogram, palette);
+        if (new_err == last_err) break;
+        last_err = new_err;
     }
 
     if (dither) {
