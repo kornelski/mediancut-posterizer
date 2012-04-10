@@ -9,11 +9,14 @@
 
 static void interpolate_palette_front(int palette[], int dither);
 
+// median cut "box" in this implementation is actually a line,
+// since it only needs to track lowest/highest intensity
 struct box {
     double sum, variance;
     int start, end;
 };
 
+// average values in a "box" proportionally to frequency of their occurence
 static double weighted_avg(struct box box, double histogram[])
 {
     double weight=0,sum=0;
@@ -24,6 +27,7 @@ static double weighted_avg(struct box box, double histogram[])
     return weight ? sum/weight : 0.0f;
 }
 
+// variance (AKA second moment) of the box. Measures how much "spread" the values are
 static double variance(struct box box, double histogram[])
 {
     double avg = weighted_avg(box,histogram);
@@ -36,10 +40,13 @@ static double variance(struct box box, double histogram[])
     return weight ? sum/weight : 0.0f;
 }
 
+// mse = mean square error. Estimates how well palette "fits" the histogram.
 static double palette_mse(double histogram[], int palette[])
 {
     int tmp[256];
     memcpy(tmp, palette, 256*sizeof(palette[0]));
+
+    // the input palette has gaps
     interpolate_palette_front(tmp, 0);
 
     double mse=0, hist_total=0;
@@ -52,6 +59,8 @@ static double palette_mse(double histogram[], int palette[])
     return mse / hist_total;
 }
 
+// converts boxes to palette.
+// palette here is a sparse array where elem[x]=x is taken, elem[x]=0 is free (except x=0)
 static void palette_from_boxes(struct box boxes[], int numboxes, double histogram[], int palette[])
 {
     memset(palette, 0, 256*sizeof(palette[0]));
@@ -70,15 +79,17 @@ static void reduce(const int maxcolors, double histogram[], int palette[])
     int numboxes=1;
     struct box boxes[256];
 
+    // build the first "box" that encompasses all values
     boxes[0].start=1; // skip first and last entry, as they're always included
     boxes[0].end=255;
     boxes[0].sum=0;
     for(int i=boxes[0].start; i < boxes[0].end; i++) boxes[0].sum += histogram[i];
-    boxes[0].variance = variance(boxes[0], histogram);
+    boxes[0].variance = 1; // irrelevant for first box
 
     while(numboxes < maxcolors) {
         int boxtosplit=-1;
         int largest=0;
+        // pick box to split by choosing one with highest variance
         for(int box=0; box < numboxes; box++) {
             if (boxes[box].variance > largest && (boxes[box].end-boxes[box].start)>=2) {
                 largest = boxes[box].variance;
@@ -88,6 +99,8 @@ static void reduce(const int maxcolors, double histogram[], int palette[])
         if (boxtosplit < 0) {
             break;
         }
+
+        // divide equally by popularity
         double sum=0;
         int val=boxes[boxtosplit].start;
         for(; val < boxes[boxtosplit].end-1; val++) {
@@ -97,6 +110,7 @@ static void reduce(const int maxcolors, double histogram[], int palette[])
             }
         }
 
+        // create new boxes from halves
         boxes[numboxes].start = boxes[boxtosplit].start;
         boxes[numboxes].end = val+1;
         boxes[numboxes].sum = sum;
@@ -110,6 +124,7 @@ static void reduce(const int maxcolors, double histogram[], int palette[])
     palette_from_boxes(boxes, numboxes, histogram, palette);
 }
 
+// palette1/2 is for even/odd pixels, allowing very simple "ordered" dithering
 static void remap(read_info img, const int *palette1, const int *palette2)
 {
     for(int i=0; i < img.height; i++) {
@@ -134,6 +149,7 @@ static void remap(read_info img, const int *palette1, const int *palette2)
     }
 }
 
+// it doesn't count unique colors, only intensity values of all channels
 static void intensity_histogram(read_info img, double histogram[])
 {
     for(int i=0; i < img.height; i++) {
@@ -149,6 +165,7 @@ static void intensity_histogram(read_info img, double histogram[])
     }
 }
 
+// interpolates front-to-back. If dither is true, it will bias towards one side
 static void interpolate_palette_front(int palette[], int dither)
 {
     int nextval=0, lastval=0;
@@ -170,6 +187,7 @@ static void interpolate_palette_front(int palette[], int dither)
     }
 }
 
+// interpolates back-to-front. If dither is true, it will bias towards one side (other than interpolate_palette_front)
 static void interpolate_palette_back(int palette2[], int dither)
 {
     int nextval=255, lastval=255;
@@ -213,6 +231,8 @@ static void usage(const char *exepath)
             "%s -d 16 < in.png > out.png\n", name, name);
 }
 
+// performs voronoi iteration (mapping histogram to palette and creating new palette from remapped values)
+// this shifts palette towards local optimum
 static void voronoi(double histogram[], int palette[])
 {
     interpolate_palette_front(palette, 0);
