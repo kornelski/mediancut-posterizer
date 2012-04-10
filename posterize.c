@@ -4,23 +4,24 @@
 #include <string.h>
 #include <assert.h>
 #include <math.h>
+#include <stdbool.h>
 #include "png.h"
 #include "rwpng.h"
 
-static void interpolate_palette_front(int palette[], int dither);
+static void interpolate_palette_front(unsigned int palette[], const bool dither);
 
 // median cut "box" in this implementation is actually a line,
 // since it only needs to track lowest/highest intensity
 struct box {
     double sum, variance;
-    int start, end;
+    unsigned int start, end;
 };
 
 // average values in a "box" proportionally to frequency of their occurence
-static double weighted_avg(struct box box, double histogram[])
+static double weighted_avg(const struct box box, const double histogram[])
 {
     double weight=0,sum=0;
-    for(int val=box.start; val < box.end; val++) {
+    for(unsigned int val=box.start; val < box.end; val++) {
         weight += histogram[val];
         sum += val*histogram[val];
     }
@@ -28,12 +29,12 @@ static double weighted_avg(struct box box, double histogram[])
 }
 
 // variance (AKA second moment) of the box. Measures how much "spread" the values are
-static double variance(struct box box, double histogram[])
+static double variance(const struct box box, const double histogram[])
 {
-    double avg = weighted_avg(box,histogram);
+    const double avg = weighted_avg(box,histogram);
 
     double weight=0,sum=0;
-    for(int val=box.start; val < box.end; val++) {
+    for(unsigned int val=box.start; val < box.end; val++) {
         weight += histogram[val];
         sum += (avg-val)*(avg-val)*histogram[val];
     }
@@ -41,9 +42,9 @@ static double variance(struct box box, double histogram[])
 }
 
 // mse = mean square error. Estimates how well palette "fits" the histogram.
-static double palette_mse(double histogram[], int palette[])
+static double palette_mse(const double histogram[], const unsigned int palette[])
 {
-    int tmp[256];
+    unsigned int tmp[256];
     memcpy(tmp, palette, 256*sizeof(palette[0]));
 
     // the input palette has gaps
@@ -61,7 +62,7 @@ static double palette_mse(double histogram[], int palette[])
 
 // converts boxes to palette.
 // palette here is a sparse array where elem[x]=x is taken, elem[x]=0 is free (except x=0)
-static void palette_from_boxes(struct box boxes[], int numboxes, double histogram[], int palette[])
+static void palette_from_boxes(const struct box boxes[], const int numboxes, const double histogram[], unsigned int palette[])
 {
     memset(palette, 0, 256*sizeof(palette[0]));
 
@@ -74,21 +75,21 @@ static void palette_from_boxes(struct box boxes[], int numboxes, double histogra
 /*
  1-dimensional median cut, using variance for "largest" box
 */
-static void reduce(const int maxcolors, double histogram[], int palette[])
+static void reduce(const unsigned int maxcolors, const double histogram[], unsigned int palette[])
 {
-    int numboxes=1;
+    unsigned int numboxes=1;
     struct box boxes[256];
 
     // build the first "box" that encompasses all values
     boxes[0].start=1; // skip first and last entry, as they're always included
     boxes[0].end=255;
     boxes[0].sum=0;
-    for(int i=boxes[0].start; i < boxes[0].end; i++) boxes[0].sum += histogram[i];
+    for(unsigned int i=boxes[0].start; i < boxes[0].end; i++) boxes[0].sum += histogram[i];
     boxes[0].variance = 1; // irrelevant for first box
 
     while(numboxes < maxcolors) {
         int boxtosplit=-1;
-        int largest=0;
+        double largest=0;
         // pick box to split by choosing one with highest variance
         for(int box=0; box < numboxes; box++) {
             if (boxes[box].variance > largest && (boxes[box].end-boxes[box].start)>=2) {
@@ -102,7 +103,7 @@ static void reduce(const int maxcolors, double histogram[], int palette[])
 
         // divide equally by popularity
         double sum=0;
-        int val=boxes[boxtosplit].start;
+        unsigned int val=boxes[boxtosplit].start;
         for(; val < boxes[boxtosplit].end-1; val++) {
             sum += histogram[val];
             if (sum >= boxes[boxtosplit].sum/2.0) {
@@ -125,14 +126,14 @@ static void reduce(const int maxcolors, double histogram[], int palette[])
 }
 
 // palette1/2 is for even/odd pixels, allowing very simple "ordered" dithering
-static void remap(read_info img, const int *palette1, const int *palette2)
+static void remap(read_info img, const unsigned int palette1[], const unsigned int palette2[])
 {
-    for(int i=0; i < img.height; i++) {
-        for(int j=0; j < img.width; j++) {
-            int x = j*4;
-            const int *palette = (i^j)&1 ? palette1 : palette2;
+    for(unsigned int i=0; i < img.height; i++) {
+        for(unsigned int j=0; j < img.width; j++) {
+            unsigned int x = j*4;
+            const unsigned int *palette = (i^j)&1 ? palette1 : palette2;
 
-            int a = palette[img.row_pointers[i][x+3]];
+            const unsigned int a = palette[img.row_pointers[i][x+3]];
             if (a) {
                 img.row_pointers[i][x] = palette[img.row_pointers[i][x]];
                 img.row_pointers[i][x+1] = palette[img.row_pointers[i][x+1]];
@@ -151,17 +152,17 @@ static void remap(read_info img, const int *palette1, const int *palette2)
 
 // usually RGBA images are stored/rendered in "premultiplied" format which is R*A, G*A, B*A
 // this causes loss of precision, so it may be a good idea to posterize to this value anyway
-inline static unsigned int premultiplied_alpha_rounding(unsigned int value, unsigned int alpha)
+inline static unsigned int premultiplied_alpha_rounding(const unsigned int value, const unsigned int alpha)
 {
     return value * alpha / alpha;
 }
 
 // it doesn't count unique colors, only intensity values of all channels
-static void intensity_histogram(read_info img, double histogram[])
+static void intensity_histogram(const read_info img, double histogram[])
 {
-    for(int i=0; i < img.height; i++) {
+    for(unsigned int i=0; i < img.height; i++) {
         const unsigned char *const row = img.row_pointers[i];
-        for(int x=0; x < img.width*4; x+=4) {
+        for(unsigned int x=0; x < img.width*4; x+=4) {
             const unsigned int alpha = row[x+3];
             if (alpha) {
                 // opaque colors get more weight
@@ -178,16 +179,16 @@ static void intensity_histogram(read_info img, double histogram[])
 }
 
 // interpolates front-to-back. If dither is true, it will bias towards one side
-static void interpolate_palette_front(int palette[], int dither)
+static void interpolate_palette_front(unsigned int palette[], const bool dither)
 {
-    int nextval=0, lastval=0;
+    unsigned int nextval=0, lastval=0;
     palette[0]=0;
     palette[255]=255; // 0 and 255 are always included
 
-    for(int val=0; val < 256; val++) {
+    for(unsigned int val=0; val < 256; val++) {
         if (palette[val]==val) {
             lastval = val;
-            for(int j=val+1; j < 256; j++) {
+            for(unsigned int j=val+1; j < 256; j++) {
                 if (palette[j]==j) {nextval=j; break;}
             }
         }
@@ -200,13 +201,13 @@ static void interpolate_palette_front(int palette[], int dither)
 }
 
 // interpolates back-to-front. If dither is true, it will bias towards one side (other than interpolate_palette_front)
-static void interpolate_palette_back(int palette2[], int dither)
+static void interpolate_palette_back(unsigned int palette2[], const bool dither)
 {
-    int nextval=255, lastval=255;
+    unsigned int nextval=255, lastval=255;
     palette2[0]=0;
     palette2[255]=255; // 0 and 255 are always included
 
-    for(int val=255; val >=0; val--) {
+    for(int val=255; val >= 0; val--) {
         if (palette2[val]==val) {
             lastval = val;
             for(int j=val-1; j >= 0; j--) {
@@ -221,9 +222,9 @@ static void interpolate_palette_back(int palette2[], int dither)
     }
 }
 
-static void dither_palette(int palette[], int palette2[], int dither)
+static void dither_palette(unsigned int palette[], unsigned int palette2[], const bool dither)
 {
-    memcpy(palette2, palette, sizeof(int)*256);
+    memcpy(palette2, palette, sizeof(unsigned int)*256);
 
     // front to back. When dithering, it's biased towards nextval
     interpolate_palette_front(palette, dither);
@@ -245,7 +246,7 @@ static void usage(const char *exepath)
 
 // performs voronoi iteration (mapping histogram to palette and creating new palette from remapped values)
 // this shifts palette towards local optimum
-static void voronoi(double histogram[], int palette[])
+static void voronoi(const double histogram[], unsigned int palette[])
 {
     interpolate_palette_front(palette, 0);
 
@@ -253,7 +254,7 @@ static void voronoi(double histogram[], int palette[])
     double sums[256] = {0};
 
     // remap palette
-    for (int i=0; i < 256; i++) {
+    for (unsigned int i=0; i < 256; i++) {
         int best = palette[i];
         counts[best] += histogram[i];
         sums[best] += histogram[i] * (double)i;
@@ -262,7 +263,7 @@ static void voronoi(double histogram[], int palette[])
     memset(palette, 0, 256*sizeof(palette[0]));
 
     // rebuild palette from remapped averages
-    for(int i=0; i < 256; i++) {
+    for(unsigned int i=0; i < 256; i++) {
         if (counts[i]) {
             int value = round(sums[i]/counts[i]);
             palette[value] = value;
@@ -273,9 +274,9 @@ static void voronoi(double histogram[], int palette[])
 int main(int argc, char *argv[])
 {
     int argn=1;
-    int dither=0;
+    bool dither = false;
     if (argc==3 && 0==strcmp("-d", argv[1])) {
-        dither=1;
+        dither=true;
         argn++;
     }
     int maxcolors=0;
@@ -304,11 +305,11 @@ int main(int argc, char *argv[])
     if (histogram[0] && maxcolors>2) {maxcolors--; histogram[0]=0;}
     if (histogram[255] && maxcolors>2) {maxcolors--; histogram[255]=0;}
 
-    int palette[256], palette2[256];
+    unsigned int palette[256], palette2[256];
     reduce(maxcolors, histogram, palette);
 
     double last_mse = INFINITY;
-    for(int j=0; j < 100; j++) {
+    for(unsigned int j=0; j < 100; j++) {
         voronoi(histogram, palette);
         double new_mse = palette_mse(histogram, palette);
         if (new_mse == last_mse) break;
