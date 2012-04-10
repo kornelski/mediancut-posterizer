@@ -18,27 +18,32 @@ struct box {
 };
 
 // average values in a "box" proportionally to frequency of their occurence
-static double weighted_avg(const struct box box, const double histogram[])
+static double weighted_avg(const unsigned int start, const unsigned int end, const double histogram[])
 {
     double weight=0,sum=0;
-    for(unsigned int val=box.start; val < box.end; val++) {
+    for(unsigned int val=start; val < end; val++) {
         weight += histogram[val];
         sum += val*histogram[val];
     }
-    return weight ? sum/weight : 0.0f;
+    return weight ? sum/weight : 0;
 }
 
 // variance (AKA second moment) of the box. Measures how much "spread" the values are
-static double variance(const struct box box, const double histogram[])
+static double variance_in_range(const unsigned int start, const unsigned int end, const double histogram[])
 {
-    const double avg = weighted_avg(box,histogram);
+    const double avg = weighted_avg(start, end, histogram);
 
     double weight=0,sum=0;
-    for(unsigned int val=box.start; val < box.end; val++) {
+    for(unsigned int val=start; val < end; val++) {
         weight += histogram[val];
         sum += (avg-val)*(avg-val)*histogram[val];
     }
     return weight ? sum/weight : 0;
+}
+
+static double variance(const struct box box, const double histogram[])
+{
+    return variance_in_range(box.start, box.end, histogram);
 }
 
 // mse = mean square error. Estimates how well palette "fits" the histogram.
@@ -67,7 +72,7 @@ static void palette_from_boxes(const struct box boxes[], const int numboxes, con
     memset(palette, 0, 256*sizeof(palette[0]));
 
     for(int box=0; box < numboxes; box++) {
-        int value = round(weighted_avg(boxes[box],histogram));
+        int value = round(weighted_avg(boxes[box].start, boxes[box].end, histogram));
         palette[value] = value;
     }
 }
@@ -101,22 +106,27 @@ static void reduce(const unsigned int maxcolors, const double histogram[], unsig
             break;
         }
 
-        // divide equally by popularity
-        double sum=0;
-        unsigned int val=boxes[boxtosplit].start;
-        for(; val < boxes[boxtosplit].end-1; val++) {
-            sum += histogram[val];
-            if (sum >= boxes[boxtosplit].sum/2.0) {
-                break;
+        // divide equally by variance
+        unsigned int bestsplit=0;
+        double minvariance = INFINITY;
+        for(unsigned int val=boxes[boxtosplit].start+1; val < boxes[boxtosplit].end-1; val++) {
+            const double variance = variance_in_range(boxes[boxtosplit].start, val, histogram)
+                                  + variance_in_range(val, boxes[boxtosplit].end, histogram);
+            if (variance < minvariance) {
+                minvariance = variance;
+                bestsplit = val;
             }
         }
 
+        double sum=0;
+        for(unsigned int i=boxes[boxtosplit].start; i < bestsplit; i++) sum += histogram[i];
+
         // create new boxes from halves
         boxes[numboxes].start = boxes[boxtosplit].start;
-        boxes[numboxes].end = val+1;
+        boxes[numboxes].end = bestsplit;
         boxes[numboxes].sum = sum;
         boxes[numboxes].variance = variance(boxes[numboxes], histogram);
-        boxes[boxtosplit].start = val+1;
+        boxes[boxtosplit].start = bestsplit;
         boxes[boxtosplit].sum -= boxes[numboxes].sum;
         boxes[boxtosplit].variance = variance(boxes[boxtosplit], histogram);
         numboxes++;
