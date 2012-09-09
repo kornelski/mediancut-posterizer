@@ -217,13 +217,6 @@ static void remap(read_info img, const palette *pal, bool dither)
     }
 }
 
-// usually RGBA images are stored/rendered in "premultiplied" format which is R*A, G*A, B*A
-// this causes loss of precision, so it may be a good idea to posterize to this value anyway
-inline static unsigned int premultiplied_alpha_rounding(const unsigned int value, const unsigned int alpha)
-{
-    return value * alpha / alpha;
-}
-
 // it doesn't count unique colors, only intensity values of all channels
 static void intensity_histogram(const read_info img, double histogram[])
 {
@@ -235,9 +228,9 @@ static void intensity_histogram(const read_info img, double histogram[])
                 // opaque colors get more weight
                 const double weight = alpha/255.0;
 
-                histogram[premultiplied_alpha_rounding(row[x], alpha)] += weight;
-                histogram[premultiplied_alpha_rounding(row[x+1], alpha)] += weight;
-                histogram[premultiplied_alpha_rounding(row[x+2], alpha)] += weight;
+                histogram[row[x]] += weight;
+                histogram[row[x+1]] += weight;
+                histogram[row[x+2]] += weight;
                 histogram[row[x+3]] += 1.0;
             }
             else histogram[0] += 4.0;
