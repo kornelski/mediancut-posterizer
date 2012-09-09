@@ -9,6 +9,8 @@
 #include "rwpng.h"
 
 static void interpolate_palette_front(unsigned int palette[], const bool dither);
+static void voronoi(const double histogram[], unsigned int palette[]);
+static double palette_error(const double histogram[], const unsigned int palette_orig[]);
 
 // Converts gamma 2.0 (approx of 2.2) to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
 inline static double gamma_to_linear(const double value)
@@ -92,7 +94,7 @@ static void palette_from_boxes(const struct box boxes[], const int numboxes, con
 /*
  1-dimensional median cut, using variance for "largest" box
 */
-static void reduce(const unsigned int maxcolors, const double histogram[], unsigned int palette[])
+static unsigned int reduce(const unsigned int maxcolors, const double maxerror, const double histogram[], unsigned int palette[])
 {
     unsigned int numboxes=1;
     struct box boxes[256];
@@ -142,9 +144,18 @@ static void reduce(const unsigned int maxcolors, const double histogram[], unsig
         boxes[boxtosplit].sum -= boxes[numboxes].sum;
         boxes[boxtosplit].variance = variance(boxes[boxtosplit], histogram);
         numboxes++;
+
+        if (maxerror > 0) {
+            palette_from_boxes(boxes, numboxes, histogram, palette);
+            voronoi(histogram, palette);
+            if (palette_error(histogram, palette) < maxerror) {
+                return numboxes;
+            }
+        }
     }
 
     palette_from_boxes(boxes, numboxes, histogram, palette);
+    return numboxes;
 }
 
 // palette1/2 is for even/odd pixels, allowing very simple "ordered" dithering
@@ -259,11 +270,13 @@ static void usage(const char *exepath)
 {
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
-    fprintf(stderr, "Median Cut PNG Posterizer 1.3 (2012).\n" \
-            "Usage: %s [-d] levels\n\n" \
-            "Specify number of levels 2-255 as an argument. -d enables dithering\n" \
-            "Image is always read from stdin and written to stdout.\n"
-            "%s -d 16 < in.png > out.png\n", name, name);
+    fprintf(stderr, "Median Cut PNG Posterizer 1.4 (2012).\n" \
+    "Usage: %s [-vd] [-q <quality>] [levels]\n\n" \
+    "Specify number of levels (2-255) or quality (10-100).\n" \
+    "-d enables dithering\n" \
+    "-v verbose output (to stderr)\n\n" \
+    "Image is always read from stdin and written to stdout.\n"
+    "%s -d 16 < in.png > out.png\n", name, name);
 }
 
 // performs voronoi iteration (mapping histogram to palette and creating new palette from remapped values)
@@ -293,24 +306,39 @@ static void voronoi(const double histogram[], unsigned int palette[])
     }
 }
 
+
+static double quality_to_mse(long quality)
+{
+    if (quality <= 0) return INFINITY;
+
+    // curve fudged to be roughly similar to quality of libjpeg
+    return 65536.0 * (1.1/pow(210.0 + quality, 1.2) * (100.1-quality)/100.0);
+}
+
 #include <unistd.h>
 
 int main(int argc, char *argv[])
 {
-    bool dither = false;
+    bool dither = false, verbose = false;
+    double maxerror = 0;
+
     int ch;
     while ((ch = getopt(argc, argv, "hvdq:")) != -1) {
         switch (ch) {
             case 'd': dither = true; break;
+            case 'v': verbose = true; break;
+            case 'q':
+                maxerror = quality_to_mse(atol(optarg));
+                break;
             case '?': case 'h':
             default:
                 usage(argv[0]);
                 return 1;
         }
     }
-    int maxcolors=0;
     int argn = optind;
 
+    int reservedcolors=0, maxcolors = maxerror > 0 ? 255 : 0;
     if (argc==(argn+1)) {
         maxcolors=atoi(argv[argn]);
         argn++;
@@ -333,11 +361,11 @@ int main(int argc, char *argv[])
 
     // reserve colors for black and white
     // and omit them from histogram to avoid confusing median cut
-    if (histogram[0] && maxcolors>2) {maxcolors--; histogram[0]=0;}
-    if (histogram[255] && maxcolors>2) {maxcolors--; histogram[255]=0;}
+    if (histogram[0] && maxcolors>2) {maxcolors--;reservedcolors++; histogram[0]=0;}
+    if (histogram[255] && maxcolors>2) {maxcolors--;reservedcolors++; histogram[255]=0;}
 
     unsigned int palette[256], palette2[256];
-    reduce(maxcolors, histogram, palette);
+    unsigned int levels = reduce(maxcolors, maxerror, histogram, palette);
 
     double last_err = INFINITY;
     for(unsigned int j=0; j < 100; j++) {
@@ -345,6 +373,10 @@ int main(int argc, char *argv[])
         double new_err = palette_error(histogram, palette);
         if (new_err == last_err) break;
         last_err = new_err;
+    }
+
+    if (verbose) {
+        fprintf(stderr, "MSE=%.3f (target %.3f, %u levels)\n", last_err, maxerror, levels+reservedcolors);
     }
 
     if (dither) {
