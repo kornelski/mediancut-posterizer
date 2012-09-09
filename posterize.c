@@ -293,15 +293,24 @@ static void voronoi(const double histogram[], unsigned int palette[])
     }
 }
 
+#include <unistd.h>
+
 int main(int argc, char *argv[])
 {
-    int argn=1;
     bool dither = false;
-    if (argc==3 && 0==strcmp("-d", argv[1])) {
-        dither=true;
-        argn++;
+    int ch;
+    while ((ch = getopt(argc, argv, "hvdq:")) != -1) {
+        switch (ch) {
+            case 'd': dither = true; break;
+            case '?': case 'h':
+            default:
+                usage(argv[0]);
+                return 1;
+        }
     }
     int maxcolors=0;
+    int argn = optind;
+
     if (argc==(argn+1)) {
         maxcolors=atoi(argv[argn]);
         argn++;
