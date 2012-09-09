@@ -301,7 +301,7 @@ static void usage(const char *exepath)
 {
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
-    fprintf(stderr, "Median Cut PNG Posterizer 1.4 (2012).\n" \
+    fprintf(stderr, "Median Cut PNG Posterizer 1.4.1 (2012).\n" \
     "Usage: %s [-vd] [-q <quality>] [levels]\n\n" \
     "Specify number of levels (2-255) or quality (10-100).\n" \
     "-d enables dithering\n" \
@@ -324,6 +324,7 @@ static void voronoi(const double histogram[], palette *pal)
     // remap palette
     for (unsigned int i=0; i < 256; i++) {
         int best = mapping[i];
+        if (0==best || 255==best) continue; // those two are guaranteed to be present, so ignore their influence
         counts[best] += histogram[i];
         sums[best] += histogram[i] * (double)i;
     }
