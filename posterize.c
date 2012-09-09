@@ -316,8 +316,7 @@ static void voronoi(const double histogram[], palette *pal)
     // rebuild palette from remapped averages
     for(unsigned int i=0; i < 256; i++) {
         if (counts[i]) {
-            int value = round(sums[i]/counts[i]);
-            pal_set(pal, value);
+            pal_set(pal, floor(sums[i]/counts[i]));
         }
     }
     pal_set(pal, 0);
