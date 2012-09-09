@@ -13,7 +13,7 @@ static void voronoi(const double histogram[], unsigned int palette[]);
 static double palette_error(const double histogram[], const unsigned int palette_orig[]);
 
 // Converts gamma 2.0 (approx of 2.2) to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
-inline static double gamma_to_linear(const double value)
+inline static double gamma_to_linear(unsigned int value)
 {
     return sqrt(value/255.0);
 }
@@ -72,7 +72,7 @@ static double palette_error(const double histogram[], const unsigned int palette
     interpolate_palette_front(palette, false);
 
     double se=0;
-    for (int i=0; i < 256; i++) {
+    for (unsigned int i=0; i < 256; i++) {
         double delta = gamma_to_linear(i)-gamma_to_linear(palette[i]);
         se += delta*delta*histogram[i];
     }
@@ -89,6 +89,7 @@ static void palette_from_boxes(const struct box boxes[], const int numboxes, con
         int value = linear_to_gamma(weighted_avg_linear(boxes[box].start, boxes[box].end, histogram));
         palette[value] = value;
     }
+    palette[255]=255;
 }
 
 /*
