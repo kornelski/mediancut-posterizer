@@ -9,6 +9,10 @@
 #include "rwpng.h"
 
 typedef struct {
+    unsigned char r,g,b,a;
+} rgba_pixel;
+
+typedef struct {
     unsigned int indices[256];
 } palette;
 
@@ -196,22 +200,20 @@ static void remap(read_info img, const palette *pal, bool dither)
     }
 
     for(unsigned int i=0; i < img.height; i++) {
+        rgba_pixel *const row = (rgba_pixel*)img.row_pointers[i];
         for(unsigned int j=0; j < img.width; j++) {
-            unsigned int x = j*4;
             const unsigned int *map = (i^j)&1 ? mapping1 : mapping2;
-
-            const unsigned int a = map[img.row_pointers[i][x+3]];
-            if (a) {
-                img.row_pointers[i][x] = map[img.row_pointers[i][x]];
-                img.row_pointers[i][x+1] = map[img.row_pointers[i][x+1]];
-                img.row_pointers[i][x+2] = map[img.row_pointers[i][x+2]];
-                img.row_pointers[i][x+3] = a;
+            const rgba_pixel px = row[j];
+            if (map[px.a]) {
+                row[j] = (rgba_pixel){
+                  .r = map[px.r],
+                  .g = map[px.g],
+                  .b = map[px.b],
+                  .a = map[px.a],
+                };
             } else {
                 // clear "dirty alpha"
-                img.row_pointers[i][x] = 0;
-                img.row_pointers[i][x+1] = 0;
-                img.row_pointers[i][x+2] = 0;
-                img.row_pointers[i][x+3] = 0;
+                row[j] = (rgba_pixel){0,0,0,0};
             }
         }
     }
@@ -221,17 +223,17 @@ static void remap(read_info img, const palette *pal, bool dither)
 static void intensity_histogram(const read_info img, double histogram[])
 {
     for(unsigned int i=0; i < img.height; i++) {
-        const unsigned char *const row = img.row_pointers[i];
-        for(unsigned int x=0; x < img.width*4; x+=4) {
-            const unsigned int alpha = row[x+3];
-            if (alpha) {
+        const rgba_pixel *const row = (rgba_pixel*)img.row_pointers[i];
+        for(unsigned int j=0; j < img.width; j++) {
+            const rgba_pixel px = row[j];
+            if (px.a) {
                 // opaque colors get more weight
-                const double weight = alpha/255.0;
+                const double weight = px.a/255.0;
 
-                histogram[row[x]] += weight;
-                histogram[row[x+1]] += weight;
-                histogram[row[x+2]] += weight;
-                histogram[row[x+3]] += 1.0;
+                histogram[px.r] += weight;
+                histogram[px.g] += weight;
+                histogram[px.b] += weight;
+                histogram[px.a] += 1.0;
             }
             else histogram[0] += 4.0;
         }
