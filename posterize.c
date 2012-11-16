@@ -48,16 +48,17 @@ static void voronoi(const double histogram[], palette *pal);
 static double palette_error(const double histogram[], const palette *palette_orig);
 static void interpolate_palette_back(const palette *pal, unsigned int mapping[]);
 
-// Converts gamma 2.0 (approx of 2.2) to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
+// Converts gamma 2.2 to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
 inline static double gamma_to_linear(unsigned int value)
 {
-    return sqrt(value/255.0);
+    const double v = value/255.0;
+    return pow(v, 2.2);
 }
 
 // Reverses gamma_to_linear. *256 is not off-by-one error.
 inline static unsigned int linear_to_gamma(const double value)
 {
-    const double g = value*value*256.0;
+    const double g = pow(value, 1.0/2.2)*256.0;
     return g < 255.0 ? g : 255;
 }
 
