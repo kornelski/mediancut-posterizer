@@ -15,6 +15,8 @@ The goal of this tool is to make RGB/RGBA PNG images more compressible, assuming
 
 Only stdin/stdout is supported.
 
+Posterized images can be further compressed using [PNGOUT](http://www.jonof.id.au/kenutils) or similar. Try [ImageOptim](http://imageoptim.com).
+
 ##GUI?
 
 Integrated in [ImageAlpha.app](http://pngmini.com).
