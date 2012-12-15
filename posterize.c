@@ -200,7 +200,7 @@ static unsigned int reduce(const unsigned int maxcolors, const double maxerror, 
 }
 
 // palette1/2 is for even/odd pixels, allowing very simple "ordered" dithering
-static void remap(read_info img, const palette *pal, bool dither)
+static void remap(png24_image img, const palette *pal, bool dither)
 {
     unsigned int mapping1[256], mapping2[256];
 
@@ -236,7 +236,7 @@ static void remap(read_info img, const palette *pal, bool dither)
 }
 
 // it doesn't count unique colors, only intensity values of all channels
-static void intensity_histogram(const read_info img, double histogram[])
+static void intensity_histogram(const png24_image img, double histogram[])
 {
     for(unsigned int i=0; i < img.height; i++) {
         const rgba_pixel *const row = (rgba_pixel*)img.row_pointers[i];
@@ -302,7 +302,7 @@ static void usage(const char *exepath)
 {
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
-    fprintf(stderr, "Median Cut PNG Posterizer 1.4.1 (2012).\n" \
+    fprintf(stderr, "Median Cut PNG Posterizer 1.5 (2012).\n" \
     "Usage: %s [-vd] [-q <quality>] [levels]\n\n" \
     "Specify number of levels (2-255) or quality (10-100).\n" \
     "-d enables dithering\n" \
@@ -395,9 +395,16 @@ int main(int argc, char *argv[])
     setmode(1, O_BINARY);
     setmode(0, O_BINARY);
 
-    read_info img;
+    png24_image img;
     pngquant_error retval;
-    if ((retval = rwpng_read_image(stdin, &img))) {
+
+    #if USE_COCOA
+    retval = rwpng_read_image24_cocoa(stdin, &img);
+    #else
+    retval = rwpng_read_image24(stdin, &img);
+    #endif
+
+    if (retval) {
         fprintf(stderr, "Error: cannot read PNG from stdin\n");
         return retval;
     }
@@ -428,8 +435,7 @@ int main(int argc, char *argv[])
 
     remap(img, &pal, dither);
 
-    if ((retval = rwpng_write_image_init(stdout, &img)) ||
-        (retval = rwpng_write_image_whole(&img))) {
+    if ((retval = rwpng_write_image24(stdout, &img))) {
         fprintf(stderr, "Error: cannot write PNG to stdout\n");
         return retval;
     }

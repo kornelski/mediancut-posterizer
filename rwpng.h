@@ -29,11 +29,14 @@
 
   ---------------------------------------------------------------------------*/
 
-#include "png.h"    /* libpng header; includes zlib.h */
+#ifndef RWPNG_H
+#define RWPNG_H
 
-#ifndef TRUE
-#  define TRUE 1
-#  define FALSE 0
+#include "png.h"    /* libpng header; includes zlib.h */
+#include <setjmp.h>
+
+#ifndef USE_COCOA
+#define USE_COCOA 0
 #endif
 
 typedef enum {
@@ -41,50 +44,55 @@ typedef enum {
     MISSING_ARGUMENT = 1,
     READ_ERROR = 2,
     INVALID_ARGUMENT = 4,
-    TOO_MANY_COLORS = 5,
-    TOO_LOW_QUALITY = 6,
     NOT_OVERWRITING_ERROR = 15,
     CANT_WRITE_ERROR = 16,
     OUT_OF_MEMORY_ERROR = 17,
     WRONG_ARCHITECTURE = 18, // Missing SSE3
     PNG_OUT_OF_MEMORY_ERROR = 24,
-    INIT_OUT_OF_MEMORY_ERROR = 34,
-    BAD_SIGNATURE_ERROR = 21,
     LIBPNG_FATAL_ERROR = 25,
     LIBPNG_INIT_ERROR = 35,
-    LIBPNG_WRITE_ERROR = 55,
-    LIBPNG_WRITE_WHOLE_ERROR = 45,
-
+    TOO_LOW_QUALITY = 99,
 } pngquant_error;
 
 typedef struct {
     jmp_buf jmpbuf;
-    png_structp png_ptr;
-    void *info_ptr;
     png_uint_32 width;
     png_uint_32 height;
-    png_uint_32 rowbytes;
-    double gamma;
-    int interlaced;
-    unsigned char *rgba_data;
+    float gamma;
     unsigned char **row_pointers;
-} read_info;
+    unsigned char *rgba_data;
+    png_size_t file_size;
+} png24_image;
+
+typedef struct {
+    jmp_buf jmpbuf;
+    png_uint_32 width;
+    png_uint_32 height;
+    float gamma;
+    unsigned char **row_pointers;
+    unsigned char *indexed_data;
+    unsigned int num_palette;
+    unsigned int num_trans;
+    png_color palette[256];
+    unsigned char trans[256];
+} png8_image;
 
 typedef union {
     jmp_buf jmpbuf;
-    read_info write;
-} read_or_write_info;
+    png24_image png24;
+    png8_image png8;
+} png_image;
 
 /* prototypes for public functions in rwpng.c */
 
-void rwpng_version_info(void);
+void rwpng_version_info(FILE *fp);
 
-pngquant_error rwpng_read_image(FILE *infile, read_info *mainprog_ptr);
+pngquant_error rwpng_read_image24(FILE *infile, png24_image *mainprog_ptr);
+#if USE_COCOA
+int rwpng_read_image24_cocoa(FILE *infile, png24_image *mainprog_ptr);
+#endif
 
-pngquant_error rwpng_write_image_init(FILE *outfile, read_info *mainprog_ptr);
+pngquant_error rwpng_write_image8(FILE *outfile, png8_image *mainprog_ptr);
+pngquant_error rwpng_write_image24(FILE *outfile, png24_image *mainprog_ptr);
 
-pngquant_error rwpng_write_image_whole(read_info *mainprog_ptr);
-
-int rwpng_write_image_row(read_info *mainprog_ptr);
-
-int rwpng_write_image_finish(read_info *mainprog_ptr);
+#endif
