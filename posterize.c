@@ -353,6 +353,13 @@ static double quality_to_mse(long quality)
 
 #include <unistd.h>
 
+#if defined(WIN32) || defined(__WIN32__)
+#include <fcntl.h>
+#include <io.h>
+#else
+#define setmode(what,ever)
+#endif
+
 int main(int argc, char *argv[])
 {
     bool dither = false, verbose = false;
@@ -384,6 +391,9 @@ int main(int argc, char *argv[])
         usage(argv[0]);
         return 1;
     }
+
+    setmode(1, O_BINARY);
+    setmode(0, O_BINARY);
 
     read_info img;
     pngquant_error retval;
