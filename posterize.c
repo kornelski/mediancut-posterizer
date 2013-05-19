@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include "png.h"
 #include "rwpng.h"
 

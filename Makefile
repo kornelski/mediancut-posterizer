@@ -1,7 +1,7 @@
 CFLAGS ?= -O3 -Wall
 
 CFLAGS += -std=c99
-LDFLAGS += -lpng -lz
+LDFLAGS += -lpng -lz -lm
 
 OBJS=posterize.o rwpng.o
 
