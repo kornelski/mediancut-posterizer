@@ -399,11 +399,7 @@ int main(int argc, char *argv[])
     png24_image img;
     pngquant_error retval;
 
-    #if USE_COCOA
-    retval = rwpng_read_image24_cocoa(stdin, &img);
-    #else
     retval = rwpng_read_image24(stdin, &img);
-    #endif
 
     if (retval) {
         fprintf(stderr, "Error: cannot read PNG from stdin\n");

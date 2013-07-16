@@ -58,7 +58,7 @@ typedef struct {
     jmp_buf jmpbuf;
     png_uint_32 width;
     png_uint_32 height;
-    float gamma;
+    double gamma;
     unsigned char **row_pointers;
     unsigned char *rgba_data;
     png_size_t file_size;
@@ -68,29 +68,27 @@ typedef struct {
     jmp_buf jmpbuf;
     png_uint_32 width;
     png_uint_32 height;
-    float gamma;
+    double gamma;
     unsigned char **row_pointers;
     unsigned char *indexed_data;
     unsigned int num_palette;
     unsigned int num_trans;
     png_color palette[256];
     unsigned char trans[256];
+    char fast_compression;
 } png8_image;
 
 typedef union {
     jmp_buf jmpbuf;
     png24_image png24;
     png8_image png8;
-} png_image;
+} rwpng_png_image;
 
 /* prototypes for public functions in rwpng.c */
 
 void rwpng_version_info(FILE *fp);
 
 pngquant_error rwpng_read_image24(FILE *infile, png24_image *mainprog_ptr);
-#if USE_COCOA
-int rwpng_read_image24_cocoa(FILE *infile, png24_image *mainprog_ptr);
-#endif
 
 pngquant_error rwpng_write_image8(FILE *outfile, png8_image *mainprog_ptr);
 pngquant_error rwpng_write_image24(FILE *outfile, png24_image *mainprog_ptr);

@@ -33,18 +33,26 @@
 #include <stdlib.h>
 
 #include "png.h"
-#include "zlib.h"
 #include "rwpng.h"
 
+#ifndef Z_BEST_COMPRESSION
+#define Z_BEST_COMPRESSION 9
+#endif
+#ifndef Z_BEST_SPEED
+#define Z_BEST_SPEED 1
+#endif
+
 static void rwpng_error_handler(png_structp png_ptr, png_const_charp msg);
+int rwpng_read_image24_cocoa(FILE *infile, png24_image *mainprog_ptr);
 
 
 void rwpng_version_info(FILE *fp)
 {
     fprintf(fp, "   Compiled with libpng %s; using libpng %s.\n",
       PNG_LIBPNG_VER_STRING, png_get_header_ver(NULL));
-    fprintf(fp, "   Compiled with zlib %s; using zlib %s.\n",
-      ZLIB_VERSION, zlib_version);
+#if USE_COCOA
+    fputs("   Compiled with Apple Cocoa image reader.\n", fp);
+#endif
 }
 
 
@@ -62,6 +70,18 @@ static void user_read_data(png_structp png_ptr, png_bytep data, png_size_t lengt
     read_data->bytes_read += read;
 }
 
+static png_bytepp rwpng_create_row_pointers(png_infop info_ptr, png_structp png_ptr, unsigned char *base, unsigned int height, unsigned int rowbytes)
+{
+    if (!rowbytes) rowbytes = png_get_rowbytes(png_ptr, info_ptr);
+
+    png_bytepp row_pointers = malloc(height * sizeof(row_pointers[0]));
+    if (!row_pointers) return NULL;
+    for(unsigned int row = 0;  row < height;  ++row) {
+        row_pointers[row] = base + row * rowbytes;
+    }
+    return row_pointers;
+}
+
 
 /*
    retval:
@@ -73,11 +93,10 @@ static void user_read_data(png_structp png_ptr, png_bytep data, png_size_t lengt
     26 = wrong PNG color type (no alpha channel)
  */
 
-pngquant_error rwpng_read_image24(FILE *infile, png24_image *mainprog_ptr)
+pngquant_error rwpng_read_image24_libpng(FILE *infile, png24_image *mainprog_ptr)
 {
     png_structp  png_ptr = NULL;
     png_infop    info_ptr = NULL;
-    png_uint_32  i;
     png_size_t   rowbytes;
     int          color_type, bit_depth;
 
@@ -151,7 +170,7 @@ pngquant_error rwpng_read_image24(FILE *infile, png24_image *mainprog_ptr)
     /* get and save the gamma info (if any) for writing */
 
     double gamma;
-    mainprog_ptr->gamma = png_get_gAMA(png_ptr, info_ptr, &gamma) ? gamma : 0.45455f;
+    mainprog_ptr->gamma = png_get_gAMA(png_ptr, info_ptr, &gamma) ? gamma : 0.45455;
 
     png_set_interlace_handling(png_ptr);
 
@@ -167,24 +186,12 @@ pngquant_error rwpng_read_image24(FILE *infile, png24_image *mainprog_ptr)
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
         return PNG_OUT_OF_MEMORY_ERROR;
     }
-    if ((mainprog_ptr->row_pointers = (png_bytepp)malloc(mainprog_ptr->height*sizeof(png_bytep))) == NULL) {
-        fprintf(stderr, "pngquant readpng:  unable to allocate row pointers\n");
-        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-        free(mainprog_ptr->rgba_data);
-        mainprog_ptr->rgba_data = NULL;
-        return PNG_OUT_OF_MEMORY_ERROR;
-    }
 
-    /* set the individual row_pointers to point at the correct offsets */
-
-    for (i = 0;  i < mainprog_ptr->height;  ++i)
-        mainprog_ptr->row_pointers[i] = mainprog_ptr->rgba_data + i*rowbytes;
-
+    png_bytepp row_pointers = rwpng_create_row_pointers(info_ptr, png_ptr, mainprog_ptr->rgba_data, mainprog_ptr->height, 0);
 
     /* now we can go ahead and just read the whole image */
 
-    png_read_image(png_ptr, (png_bytepp)mainprog_ptr->row_pointers);
-
+    png_read_image(png_ptr, row_pointers);
 
     /* and we're done!  (png_read_end() can be omitted if no processing of
      * post-IDAT text/time/etc. is desired) */
@@ -194,12 +201,23 @@ pngquant_error rwpng_read_image24(FILE *infile, png24_image *mainprog_ptr)
     png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
 
     mainprog_ptr->file_size = read_data.bytes_read;
+    mainprog_ptr->row_pointers = (unsigned char **)row_pointers;
 
     return SUCCESS;
 }
 
 
-pngquant_error rwpng_write_image_init(png_image *mainprog_ptr, png_structpp png_ptr_p, png_infopp info_ptr_p, FILE *outfile)
+pngquant_error rwpng_read_image24(FILE *infile, png24_image *input_image_p)
+{
+#if USE_COCOA
+    return rwpng_read_image24_cocoa(infile, input_image_p);
+#else
+    return rwpng_read_image24_libpng(infile, input_image_p);
+#endif
+}
+
+
+static pngquant_error rwpng_write_image_init(rwpng_png_image *mainprog_ptr, png_structpp png_ptr_p, png_infopp info_ptr_p, FILE *outfile, int fast_compression)
 {
     /* could also replace libpng warning-handler (final NULL), but no need: */
 
@@ -228,40 +246,48 @@ pngquant_error rwpng_write_image_init(png_image *mainprog_ptr, png_structpp png_
 
     png_init_io(*png_ptr_p, outfile);
 
-    png_set_compression_level(*png_ptr_p, Z_BEST_COMPRESSION);
-
-    // Palette images generally don't gain anything from filtering
-    png_set_filter(*png_ptr_p, PNG_FILTER_TYPE_BASE, PNG_FILTER_VALUE_NONE);
-
-    if (mainprog_ptr->png8.gamma > 0.0) {
-        png_set_gAMA(*png_ptr_p, *info_ptr_p, mainprog_ptr->png8.gamma);
-    }
+    png_set_compression_level(*png_ptr_p, fast_compression ? Z_BEST_SPEED : Z_BEST_COMPRESSION);
 
     return SUCCESS;
 }
 
 
-void rwpng_write_end(png_infopp info_ptr_p, png_structpp png_ptr_p, png_image *mainprog_ptr)
+void rwpng_write_end(png_infopp info_ptr_p, png_structpp png_ptr_p, png_bytepp row_pointers)
 {
     png_write_info(*png_ptr_p, *info_ptr_p);
 
     png_set_packing(*png_ptr_p);
 
-    png_write_image(*png_ptr_p, mainprog_ptr->png8.row_pointers);
+    png_write_image(*png_ptr_p, row_pointers);
 
     png_write_end(*png_ptr_p, NULL);
 
     png_destroy_write_struct(png_ptr_p, info_ptr_p);
 }
 
+void rwpng_set_gamma(png_infop info_ptr, png_structp png_ptr, double gamma)
+{
+    if (gamma > 0.0) {
+        png_set_gAMA(png_ptr, info_ptr, gamma);
+
+        if (gamma > 0.45454 && gamma < 0.45456) {
+            png_set_sRGB(png_ptr, info_ptr, 0); // 0 = Perceptual
+        }
+    }
+}
 
 pngquant_error rwpng_write_image8(FILE *outfile, png8_image *mainprog_ptr)
 {
     png_structp png_ptr;
     png_infop info_ptr;
 
-    pngquant_error retval = rwpng_write_image_init((png_image*)mainprog_ptr, &png_ptr, &info_ptr, outfile);
+    pngquant_error retval = rwpng_write_image_init((rwpng_png_image*)mainprog_ptr, &png_ptr, &info_ptr, outfile, mainprog_ptr->fast_compression);
     if (retval) return retval;
+
+    // Palette images generally don't gain anything from filtering
+    png_set_filter(png_ptr, PNG_FILTER_TYPE_BASE, PNG_FILTER_VALUE_NONE);
+
+    rwpng_set_gamma(info_ptr, png_ptr, mainprog_ptr->gamma);
 
     /* set the image parameters appropriately */
     int sample_depth;
@@ -284,7 +310,7 @@ pngquant_error rwpng_write_image8(FILE *outfile, png8_image *mainprog_ptr)
     if (mainprog_ptr->num_trans > 0)
         png_set_tRNS(png_ptr, info_ptr, mainprog_ptr->trans, mainprog_ptr->num_trans, NULL);
 
-    rwpng_write_end(&info_ptr, &png_ptr, (png_image*)mainprog_ptr);
+    rwpng_write_end(&info_ptr, &png_ptr, mainprog_ptr->row_pointers);
 
     return SUCCESS;
 }
@@ -294,8 +320,10 @@ pngquant_error rwpng_write_image24(FILE *outfile, png24_image *mainprog_ptr)
     png_structp png_ptr;
     png_infop info_ptr;
 
-    pngquant_error retval = rwpng_write_image_init((png_image*)mainprog_ptr, &png_ptr, &info_ptr, outfile);
+    pngquant_error retval = rwpng_write_image_init((rwpng_png_image*)mainprog_ptr, &png_ptr, &info_ptr, outfile, 0);
     if (retval) return retval;
+
+    rwpng_set_gamma(info_ptr, png_ptr, mainprog_ptr->gamma);
 
     png_set_IHDR(png_ptr, info_ptr, mainprog_ptr->width, mainprog_ptr->height,
                  8, PNG_COLOR_TYPE_RGB_ALPHA,
@@ -303,7 +331,11 @@ pngquant_error rwpng_write_image24(FILE *outfile, png24_image *mainprog_ptr)
                  PNG_FILTER_TYPE_BASE);
 
 
-    rwpng_write_end(&info_ptr, &png_ptr, (png_image*)mainprog_ptr);
+    png_bytepp row_pointers = rwpng_create_row_pointers(info_ptr, png_ptr, mainprog_ptr->rgba_data, mainprog_ptr->height, 0);
+
+    rwpng_write_end(&info_ptr, &png_ptr, row_pointers);
+
+    free(row_pointers);
 
     return SUCCESS;
 }
@@ -311,7 +343,7 @@ pngquant_error rwpng_write_image24(FILE *outfile, png24_image *mainprog_ptr)
 
 static void rwpng_error_handler(png_structp png_ptr, png_const_charp msg)
 {
-    png_image  *mainprog_ptr;
+    rwpng_png_image  *mainprog_ptr;
 
     /* This function, aside from the extra step of retrieving the "error
      * pointer" (below) and the fact that it exists within the application
