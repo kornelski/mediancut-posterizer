@@ -52,18 +52,21 @@ static void interpolate_palette_front(const palette *pal, unsigned int mapping[]
 static void voronoi(const double histogram[], palette *pal);
 static double palette_error(const double histogram[], const palette *palette_orig);
 static void interpolate_palette_back(const palette *pal, unsigned int mapping[]);
+static void posterize(png24_image *img, unsigned int maxcolors, const double maxerror, bool dither, bool verbose);
+
+const double image_gamma = 2.2;
 
 // Converts gamma 2.2 to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
 inline static double gamma_to_linear(unsigned int value)
 {
     const double v = value/255.0;
-    return pow(v, 2.2);
+    return pow(v, image_gamma);
 }
 
 // Reverses gamma_to_linear. *256 is not off-by-one error.
 inline static unsigned int linear_to_gamma(const double value)
 {
-    const double g = pow(value, 1.0/2.2)*256.0;
+    const double g = pow(value, 1.0/image_gamma)*256.0;
     return g < 255.0 ? g : 255;
 }
 
@@ -206,7 +209,7 @@ static unsigned int reduce(const unsigned int maxcolors, const double maxerror, 
 }
 
 // palette1/2 is for even/odd pixels, allowing very simple "ordered" dithering
-static void remap(png24_image img, const palette *pal, bool dither)
+static void remap(png24_image *img, const palette *pal, bool dither)
 {
     unsigned int mapping1[256], mapping2[256];
 
@@ -221,9 +224,9 @@ static void remap(png24_image img, const palette *pal, bool dither)
         memcpy(mapping2, mapping1, sizeof(mapping2));
     }
 
-    for(unsigned int i=0; i < img.height; i++) {
-        rgba_pixel *const row = (rgba_pixel*)img.row_pointers[i];
-        for(unsigned int j=0; j < img.width; j++) {
+    for(unsigned int i=0; i < img->height; i++) {
+        rgba_pixel *const row = (rgba_pixel*)img->row_pointers[i];
+        for(unsigned int j=0; j < img->width; j++) {
             const unsigned int *map = (i^j)&1 ? mapping1 : mapping2;
             const rgba_pixel px = row[j];
             if (map[px.a]) {
@@ -242,11 +245,11 @@ static void remap(png24_image img, const palette *pal, bool dither)
 }
 
 // it doesn't count unique colors, only intensity values of all channels
-static void intensity_histogram(const png24_image img, double histogram[])
+static void intensity_histogram(const png24_image *img, double histogram[])
 {
-    for(unsigned int i=0; i < img.height; i++) {
-        const rgba_pixel *const row = (rgba_pixel*)img.row_pointers[i];
-        for(unsigned int j=0; j < img.width; j++) {
+    for(unsigned int i=0; i < img->height; i++) {
+        const rgba_pixel *const row = (rgba_pixel*)img->row_pointers[i];
+        for(unsigned int j=0; j < img->width; j++) {
             const rgba_pixel px = row[j];
             if (px.a) {
                 // opaque colors get more weight
@@ -398,7 +401,7 @@ int main(int argc, char *argv[])
     }
     int argn = optind;
 
-    int reservedcolors=0, maxcolors = maxerror > 0 ? 255 : 0;
+    int maxcolors = maxerror > 0 ? 255 : 0;
     if (argc==(argn+1)) {
         maxcolors=atoi(argv[argn]);
         argn++;
@@ -415,18 +418,29 @@ int main(int argc, char *argv[])
     png24_image img;
     pngquant_error retval;
 
-    retval = rwpng_read_image24(stdin, &img);
-
-    if (retval) {
+    if ((retval = rwpng_read_image24(stdin, &img))) {
         fprintf(stderr, "Error: cannot read PNG from stdin\n");
         return retval;
     }
 
+    posterize(&img, maxcolors, maxerror, dither, verbose);
+
+    if ((retval = rwpng_write_image24(stdout, &img))) {
+        fprintf(stderr, "Error: cannot write PNG to stdout\n");
+        return retval;
+    }
+
+    return 0;
+}
+
+static void posterize(png24_image *img, unsigned int maxcolors, const double maxerror, bool dither, bool verbose)
+{
     double histogram[256]={0};
     intensity_histogram(img, histogram);
 
     // reserve colors for black and white
     // and omit them from histogram to avoid confusing median cut
+    unsigned int reservedcolors=0;
     if (histogram[0] && maxcolors>2) {maxcolors--;reservedcolors++; histogram[0]=0;}
     if (histogram[255] && maxcolors>2) {maxcolors--;reservedcolors++; histogram[255]=0;}
 
@@ -447,11 +461,4 @@ int main(int argc, char *argv[])
     }
 
     remap(img, &pal, dither);
-
-    if ((retval = rwpng_write_image24(stdout, &img))) {
-        fprintf(stderr, "Error: cannot write PNG to stdout\n");
-        return retval;
-    }
-
-    return 0;
 }
