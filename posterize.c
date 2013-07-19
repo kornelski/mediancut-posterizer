@@ -24,6 +24,10 @@
 #include "png.h"
 #include "rwpng.h"
 
+#ifndef MAX
+ #define MAX(a,b) ((a)>=(b)?(a):(b))
+#endif
+
 typedef struct {
     unsigned char r,g,b,a;
 } rgba_pixel;
@@ -108,12 +112,13 @@ static double palette_error(const double histogram[], const palette *pal)
     // the input palette has gaps
     interpolate_palette_front(pal, mapping, false);
 
-    double se=0;
+    double sum=0, px=0;
     for (unsigned int i=0; i < 256; i++) {
         double delta = gamma_to_linear(i)-gamma_to_linear(mapping[i]);
-        se += delta*delta*histogram[i];
+        sum += delta*delta*histogram[i];
+        px += histogram[i];
     }
-    return se;
+    return sum/px;
 }
 
 // converts boxes to palette.
@@ -304,7 +309,7 @@ static void usage(const char *exepath)
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
     fprintf(stderr, "Median Cut PNG Posterizer 1.5 (2012).\n" \
-    "Usage: %s [-vd] [-q <quality>] [levels]\n\n" \
+    "Usage: %s [-vd] [-Q <quality>] [levels]\n\n" \
     "Specify number of levels (2-255) or quality (10-100).\n" \
     "-d enables dithering\n" \
     "-v verbose output (to stderr)\n\n" \
@@ -346,10 +351,20 @@ static void voronoi(const double histogram[], palette *pal)
 
 static double quality_to_mse(long quality)
 {
-    if (quality <= 0) return INFINITY;
+    if (quality == 0) return INFINITY;
 
     // curve fudged to be roughly similar to quality of libjpeg
-    return 65536.0 * (1.1/pow(210.0 + quality, 1.2) * (100.1-quality)/100.0);
+    // except lowest 10 for really low number of colors
+    const double extra_low_quality_fudge = MAX(0,0.016/(0.001+quality) - 0.001);
+    return (extra_low_quality_fudge + 2.5/pow(210.0 + quality, 1.2) * (100.1-quality)/100.0) / 6.0;
+}
+
+static unsigned int mse_to_quality(double mse)
+{
+    for(int i=100; i > 0; i--) {
+        if (mse <= quality_to_mse(i)) return i;
+    }
+    return 0;
 }
 
 #include <unistd.h>
@@ -367,11 +382,12 @@ int main(int argc, char *argv[])
     double maxerror = 0;
 
     int ch;
-    while ((ch = getopt(argc, argv, "hvdq:")) != -1) {
+    while ((ch = getopt(argc, argv, "hvdq:Q:")) != -1) {
         switch (ch) {
             case 'd': dither = true; break;
             case 'v': verbose = true; break;
             case 'q':
+            case 'Q':
                 maxerror = quality_to_mse(atol(optarg));
                 break;
             case '?': case 'h':
@@ -427,7 +443,7 @@ int main(int argc, char *argv[])
     }
 
     if (verbose) {
-        fprintf(stderr, "MSE=%.3f (target %.3f, %u levels)\n", last_err, maxerror, levels+reservedcolors);
+        fprintf(stderr, "MSE=%.3f (Q=%d, %u levels)\n", last_err*65536.0, mse_to_quality(last_err), levels+reservedcolors);
     }
 
     remap(img, &pal, dither);
