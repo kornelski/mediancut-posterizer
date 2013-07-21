@@ -396,6 +396,165 @@ static void voronoi(const hist_entry histogram[static 256], palette *pal)
     pal_set(pal, 255);
 }
 
+static unsigned int colordifference_ch(const int x, const int y, const int alphas)
+{
+    // maximum of channel blended on white, and blended on black
+    // premultiplied alpha and backgrounds 0/1 shorten the formula
+    const int black = x-y, white = black+alphas;
+    return black*black + white*white;
+}
+
+static unsigned int colordifference(const rgba_pixel px, const rgba_pixel py)
+{
+    const int alphas = py.a-px.a;
+    return colordifference_ch((px.r * px.a)>>8, (py.r * py.a)>>8, alphas) +
+           colordifference_ch((px.g * px.a)>>8, (py.g * py.a)>>8, alphas) +
+           colordifference_ch((px.b * px.a)>>8, (py.b * py.a)>>8, alphas);
+}
+
+static void get_pixel_differences(const rgba_pixel *const  row, const int width, unsigned int *diffs)
+{
+    // 5 pixels around center, pixels outside the edge replicate 0th pixel
+    const rgba_pixel x0 = row[0];
+    const rgba_pixel x3 = row[1];
+    const rgba_pixel x4 = row[2];
+    unsigned int acc[4] = {
+        x0.r*3 + x3.r + x4.r,
+        x0.g*3 + x3.g + x4.g,
+        x0.b*3 + x3.b + x4.b,
+        x0.a*3 + x3.a + x4.a,
+    };
+
+    for(int x=0; x < width; x++) {
+        diffs[x] = colordifference(row[x], (rgba_pixel){
+            .r = acc[0] / 5,
+            .g = acc[1] / 5,
+            .b = acc[2] / 5,
+            .a = acc[3] / 5,
+        });
+
+        const rgba_pixel prev = row[x > 2 ? x-2 : 0];
+        acc[0] -= prev.r;
+        acc[1] -= prev.g;
+        acc[2] -= prev.b;
+        acc[3] -= prev.a;
+
+        const rgba_pixel next = row[x < width-3 ? x+2 : width-1];
+        acc[0] += next.r;
+        acc[1] += next.g;
+        acc[2] += next.b;
+        acc[3] += next.a;
+    }
+}
+
+static void blur_pixel_differences(int width, unsigned int *diffs)
+{
+    unsigned int prev = diffs[0];
+    for(int x=0; x < width; x++) {
+        const unsigned int tmp = diffs[x];
+        const unsigned int next = diffs[x < width-2 ? x+1 : width-1];
+        diffs[x] += prev + next; // no need to divide
+        prev = tmp;
+    }
+}
+
+static void rle_line(rgba_pixel *const row, unsigned int width, unsigned int *diffs, const unsigned int maxerror);
+
+static void rle(png24_image *img, const double unit_maxerror)
+{
+    unsigned int maxerror = unit_maxerror * 6.0 * 65536.0; // scale to colordifference output
+    unsigned int diffs[img->width];
+
+    for(int y=0; y < img->height; y++) {
+        rgba_pixel *const row = (rgba_pixel*)img->row_pointers[y];
+
+        get_pixel_differences(row, img->width, diffs);
+        blur_pixel_differences(img->width, diffs);
+        blur_pixel_differences(img->width, diffs);
+        blur_pixel_differences(img->width, diffs);
+        blur_pixel_differences(img->width, diffs);
+        blur_pixel_differences(img->width, diffs);
+
+
+        rle_line((rgba_pixel*)img->row_pointers[y], img->width, diffs, maxerror);
+    }
+}
+
+static void rle_line(rgba_pixel *const row, unsigned int width, unsigned int *diffs, const unsigned int maxerror)
+{
+    if (width < 4) return;
+
+    unsigned int best_start = 0;
+    unsigned int least_diff = diffs[0];
+    for(int i=1; i < width-2; i++) {
+        if (diffs[i] < least_diff) {
+            best_start = i;
+            least_diff = diffs[i];
+        }
+    }
+
+    unsigned int left = best_start, right = best_start;
+    unsigned int acc[4] = {row[best_start].r,row[best_start].g,row[best_start].b,row[best_start].a};
+
+    bool left_stuck = false, right_stuck = false;
+    do {
+        unsigned int len = right - left + 1;
+        const rgba_pixel avg = (rgba_pixel){
+            .r = acc[0] / len,
+            .g = acc[1] / len,
+            .b = acc[2] / len,
+            .a = acc[3] / len,
+        };
+
+        if (!left_stuck && left > 0) {
+            rgba_pixel x0 = row[left-1];
+            unsigned int diff = colordifference(avg, x0);
+            if (diff < maxerror) {
+                acc[0] += x0.r;
+                acc[1] += x0.g;
+                acc[2] += x0.b;
+                acc[3] += x0.a;
+                left--;
+            }
+            else left_stuck = true;
+        }
+        else left_stuck = true;
+
+        if (!right_stuck && right < width-2) {
+            rgba_pixel x0 = row[right+1];
+            unsigned int diff = colordifference(avg, x0);
+            if (diff < maxerror) {
+                acc[0] += x0.r;
+                acc[1] += x0.g;
+                acc[2] += x0.b;
+                acc[3] += x0.a;
+                right++;
+            }
+            else right_stuck = true;
+        }
+        else right_stuck = true;
+
+    } while(!left_stuck || !right_stuck);
+
+    unsigned int len = right - left + 1;
+    if (len > 4) {
+        const rgba_pixel avg = (rgba_pixel){
+            .r = acc[0] / len,
+            .g = acc[1] / len,
+            .b = acc[2] / len,
+            .a = acc[3] / len,
+        };
+        for(int x=left; x <= right; x++) {
+            row[x] = avg;
+        }
+    }
+    if (right < width-5) {
+        rle_line(row+right+1, width-right-1, diffs+right+1, maxerror);
+    }
+    if (left > 5) {
+        rle_line(row, left-1, diffs, maxerror);
+    }
+}
 
 static double quality_to_mse(long quality)
 {
@@ -513,5 +672,21 @@ static void posterize(png24_image *img, unsigned int maxcolors, const double max
         fprintf(stderr, "MSE=%.3f (Q=%d, %u levels)\n", last_err*65536.0, mse_to_quality(last_err), levels+reservedcolors);
     }
 
+    double rle_treshold = (maxerror ? maxerror : last_err) * 0.8;
+    const double ugly_treshold = quality_to_mse(80);
+    if (rle_treshold > ugly_treshold) {
+        rle_treshold = (rle_treshold + ugly_treshold)/2.0;
+    }
+    const double awful_treshold = quality_to_mse(50);
+    if (rle_treshold > awful_treshold) {
+        rle_treshold = awful_treshold;
+    }
+
+    if (verbose) {
+    fprintf(stderr, "RLE at q=%d\n", mse_to_quality(rle_treshold));
+    }
+
+
+    rle(img, rle_treshold);
     remap(img, &pal, dither);
 }
