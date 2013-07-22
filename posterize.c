@@ -251,16 +251,13 @@ static void intensity_histogram(const png24_image *img, double histogram[])
         const rgba_pixel *const row = (rgba_pixel*)img->row_pointers[i];
         for(unsigned int j=0; j < img->width; j++) {
             const rgba_pixel px = row[j];
-            if (px.a) {
-                // opaque colors get more weight
-                const double weight = px.a/255.0;
+            // opaque colors get more weight
+            const double weight = px.a/255.0;
 
-                histogram[px.r] += weight;
-                histogram[px.g] += weight;
-                histogram[px.b] += weight;
-                histogram[px.a] += 1.0;
-            }
-            else histogram[0] += 4.0;
+            histogram[px.r] += weight;
+            histogram[px.g] += weight;
+            histogram[px.b] += weight;
+            histogram[px.a] += 1.0 + 3.0*(1.0-weight);
         }
     }
 }
