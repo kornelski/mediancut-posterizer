@@ -28,6 +28,8 @@
  #define MAX(a,b) ((a)>=(b)?(a):(b))
 #endif
 
+#define BOTH(a) ((a).color + (a).alpha)
+
 typedef struct {
     unsigned char r,g,b,a;
 } rgba_pixel;
@@ -35,6 +37,10 @@ typedef struct {
 typedef struct {
     unsigned int indices[256];
 } palette;
+
+typedef struct {
+    double color, alpha;
+} hist_entry;
 
 inline static void pal_set(palette *pal, const unsigned int val) {
     pal->indices[val] = val;
@@ -49,27 +55,35 @@ static void pal_init(palette *pal) {
 }
 
 static void interpolate_palette_front(const palette *pal, unsigned int mapping[], const bool dither);
-static void voronoi(const double histogram[], palette *pal);
-static double palette_error(const double histogram[], const palette *palette_orig);
+static void voronoi(const hist_entry histogram[static 256], palette *pal);
+static double palette_error(const hist_entry histogram[static 256], const palette *palette_orig);
 static void interpolate_palette_back(const palette *pal, unsigned int mapping[]);
 static void posterize(png24_image *img, unsigned int maxcolors, const double maxerror, bool dither, bool verbose);
 
-const double image_gamma = 2.2;
-
-// Converts gamma 2.2 to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
-inline static double gamma_to_linear(unsigned int value)
+inline static double int_to_linear(unsigned int value)
 {
-    const double v = value/255.0;
-    return pow(v, image_gamma);
+    return value/255.0;
 }
 
-// Reverses gamma_to_linear. *256 is not off-by-one error.
-inline static unsigned int linear_to_gamma(const double value)
+// *256 is not off-by-one error.
+inline static unsigned int linear_to_int(const double value)
 {
-    const double g = pow(value, 1.0/image_gamma)*256.0;
+    const double g = value*256.0;
     return g < 255.0 ? g : 255;
 }
 
+// Converts gamma 2.2 to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
+double image_gamma = 2.2;
+inline static double gamma_to_linear(unsigned int value)
+{
+    return pow(int_to_linear(value), image_gamma);
+}
+
+// Reverses gamma_to_linear.
+inline static unsigned int linear_to_gamma(const double value)
+{
+    return linear_to_int(pow(value, 1.0/image_gamma));
+}
 
 // median cut "box" in this implementation is actually a line,
 // since it only needs to track lowest/highest intensity
@@ -78,37 +92,65 @@ struct box {
     unsigned int start, end;
 };
 
+// helper function that gives integer intensity (palette index) from given weights.
+// NB: in this function color is linear 0..1, alpha is 0..255!
+inline static unsigned int index_from_weights(hist_entry weight, hist_entry sum)
+{
+    const double color_gamma = weight.color ? linear_to_gamma(sum.color/weight.color) * weight.color : 0;
+    const double mixed_linear = (color_gamma + sum.alpha) / (BOTH(weight) * 255.0);
+    return linear_to_int(mixed_linear);
+}
+
 // average values in a "box" proportionally to frequency of their occurence
-static double weighted_avg_linear(const unsigned int start, const unsigned int end, const double histogram[])
+// returns linear value (which is a mix of color and alpha components, so can't be gamma-corrected later)
+static double weighted_avg_linear(const unsigned int start, const unsigned int end, const hist_entry histogram[static 256])
 {
     double weight=0,sum=0;
     for(unsigned int val=start; val < end; val++) {
-        weight += histogram[val];
-        sum += gamma_to_linear(val)*histogram[val];
+        weight += BOTH(histogram[val]);
+        sum += gamma_to_linear(val)*histogram[val].color + int_to_linear(val)*histogram[val].alpha;
     }
     return weight ? sum/weight : 0;
 }
 
+// returns integer index that from weighed average and applies gamma correction proportionally to amount of color
+static unsigned int weighted_avg_int(const unsigned int start, const unsigned int end, const hist_entry histogram[static 256])
+{
+    hist_entry weight = {0};
+    hist_entry sum = {0};
+
+    for(unsigned int val=start; val < end; val++) {
+        weight.color += histogram[val].color;
+        weight.alpha += histogram[val].alpha;
+        sum.color += histogram[val].color * gamma_to_linear(val);
+        sum.alpha += histogram[val].alpha * val;
+    }
+
+    return index_from_weights(weight, sum);
+}
+
 // variance (AKA second moment) of the box. Measures how much "spread" the values are
-static double variance_in_range(const unsigned int start, const unsigned int end, const double histogram[])
+static double variance_in_range(const unsigned int start, const unsigned int end, const hist_entry histogram[static 256])
 {
     const double avg = weighted_avg_linear(start, end, histogram);
 
     double sum=0;
     for(unsigned int val=start; val < end; val++) {
-        const double delta = avg-gamma_to_linear(val);
-        sum += delta*delta*histogram[val];
+        const double color_delta = avg-gamma_to_linear(val);
+        const double alpha_delta = avg-int_to_linear(val);
+        sum += color_delta*color_delta*histogram[val].color;
+        sum += alpha_delta*alpha_delta*histogram[val].alpha;
     }
     return sum;
 }
 
-static double variance(const struct box box, const double histogram[])
+static double variance(const struct box box, const hist_entry histogram[static 256])
 {
     return variance_in_range(box.start, box.end, histogram);
 }
 
 // Square error. Estimates how well palette "fits" the histogram.
-static double palette_error(const double histogram[], const palette *pal)
+static double palette_error(const hist_entry histogram[static 256], const palette *pal)
 {
     unsigned int mapping[256];
 
@@ -117,22 +159,23 @@ static double palette_error(const double histogram[], const palette *pal)
 
     double sum=0, px=0;
     for (unsigned int i=0; i < 256; i++) {
-        double delta = gamma_to_linear(i)-gamma_to_linear(mapping[i]);
-        sum += delta*delta*histogram[i];
-        px += histogram[i];
+        double color_delta = gamma_to_linear(i)-gamma_to_linear(mapping[i]);
+        double alpha_delta = int_to_linear(i)-int_to_linear(mapping[i]);
+        sum += color_delta*color_delta*histogram[i].color;
+        sum += alpha_delta*alpha_delta*histogram[i].alpha;
+        px += BOTH(histogram[i]);
     }
     return sum/px;
 }
 
 // converts boxes to palette.
 // palette here is a sparse array where elem[x]=x is taken, elem[x]=0 is free (except x=0)
-static void palette_from_boxes(const struct box boxes[], const int numboxes, const double histogram[], palette *pal)
+static void palette_from_boxes(const struct box boxes[], const int numboxes, const hist_entry histogram[static 256], palette *pal)
 {
     pal_init(pal);
 
     for(int box=0; box < numboxes; box++) {
-        int value = linear_to_gamma(weighted_avg_linear(boxes[box].start, boxes[box].end, histogram));
-        pal_set(pal, value);
+        pal_set(pal, weighted_avg_int(boxes[box].start, boxes[box].end, histogram));
     }
     pal_set(pal, 0);
     pal_set(pal, 255);
@@ -141,7 +184,7 @@ static void palette_from_boxes(const struct box boxes[], const int numboxes, con
 /*
  1-dimensional median cut, using variance for "largest" box
 */
-static unsigned int reduce(const unsigned int maxcolors, const double maxerror, const double histogram[], palette *pal)
+static unsigned int reduce(const unsigned int maxcolors, const double maxerror, const hist_entry histogram[static 256], palette *pal)
 {
     unsigned int numboxes=1;
     struct box boxes[256];
@@ -150,7 +193,7 @@ static unsigned int reduce(const unsigned int maxcolors, const double maxerror, 
     boxes[0].start=1; // skip first and last entry, as they're always included
     boxes[0].end=255;
     boxes[0].sum=0;
-    for(unsigned int i=boxes[0].start; i < boxes[0].end; i++) boxes[0].sum += histogram[i];
+    for(unsigned int i=boxes[0].start; i < boxes[0].end; i++) boxes[0].sum += BOTH(histogram[i]);
     boxes[0].variance = 1; // irrelevant for first box
 
     while(numboxes < maxcolors) {
@@ -180,7 +223,7 @@ static unsigned int reduce(const unsigned int maxcolors, const double maxerror, 
         }
 
         double sum=0;
-        for(unsigned int i=boxes[boxtosplit].start; i < bestsplit; i++) sum += histogram[i];
+        for(unsigned int i=boxes[boxtosplit].start; i < bestsplit; i++) sum += BOTH(histogram[i]);
 
         // create new boxes from halves
         boxes[numboxes].start = boxes[boxtosplit].start;
@@ -245,7 +288,7 @@ static void remap(png24_image *img, const palette *pal, bool dither)
 }
 
 // it doesn't count unique colors, only intensity values of all channels
-static void intensity_histogram(const png24_image *img, double histogram[])
+static void intensity_histogram(const png24_image *img, hist_entry histogram[static 256])
 {
     for(unsigned int i=0; i < img->height; i++) {
         const rgba_pixel *const row = (rgba_pixel*)img->row_pointers[i];
@@ -254,10 +297,13 @@ static void intensity_histogram(const png24_image *img, double histogram[])
             // opaque colors get more weight
             const double weight = px.a/255.0;
 
-            histogram[px.r] += weight;
-            histogram[px.g] += weight;
-            histogram[px.b] += weight;
-            histogram[px.a] += 1.0 + 3.0*(1.0-weight);
+            // color and alpha are tracked separately, because
+            // difference between colors is non-linear (gamma applies)
+            // e.g. dark colors are less visually distinct than low alpha values
+            histogram[px.r].color += weight;
+            histogram[px.g].color += weight;
+            histogram[px.b].color += weight;
+            histogram[px.a].alpha += 1.0 + 3.0*(1.0-weight);
         }
     }
 }
@@ -276,8 +322,8 @@ static void interpolate_palette_front(const palette *pal, unsigned int mapping[]
                 if (pal_isset(pal, j)) {nextval=j; break;}
             }
         }
-        const double lastvaldiff = (gamma_to_linear(val) - gamma_to_linear(lastval));
-        const double nextvaldiff = (gamma_to_linear(nextval) - gamma_to_linear(val));
+        const double lastvaldiff = (int_to_linear(val) - int_to_linear(lastval));
+        const double nextvaldiff = (int_to_linear(nextval) - int_to_linear(val));
         if (!dither) {
             mapping[val] = lastvaldiff < nextvaldiff ? lastval : nextval;
         } else {
@@ -298,8 +344,8 @@ static void interpolate_palette_back(const palette *pal, unsigned int mapping[])
                 if (pal_isset(pal, j)) {nextval=j; break;}
             }
         }
-        const double lastvaldiff = (gamma_to_linear(val) - gamma_to_linear(lastval));
-        const double nextvaldiff = (gamma_to_linear(nextval) - gamma_to_linear(val));
+        const double lastvaldiff = (int_to_linear(val) - int_to_linear(lastval));
+        const double nextvaldiff = (int_to_linear(nextval) - int_to_linear(val));
         mapping[val] = lastvaldiff/2 >= nextvaldiff ? lastval : nextval;
     }
 }
@@ -308,7 +354,7 @@ static void usage(const char *exepath)
 {
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
-    fprintf(stderr, "Median Cut PNG Posterizer 1.5 (2012).\n" \
+    fprintf(stderr, "Median Cut PNG Posterizer 1.6 (2013).\n" \
     "Usage: %s [-vd] [-Q <quality>] [levels]\n\n" \
     "Specify number of levels (2-255) or quality (10-100).\n" \
     "-d enables dithering\n" \
@@ -319,29 +365,31 @@ static void usage(const char *exepath)
 
 // performs voronoi iteration (mapping histogram to palette and creating new palette from remapped values)
 // this shifts palette towards local optimum
-static void voronoi(const double histogram[], palette *pal)
+static void voronoi(const hist_entry histogram[static 256], palette *pal)
 {
     unsigned int mapping[256];
 
     interpolate_palette_front(pal, mapping, false);
 
-    double counts[256] = {0};
-    double sums[256] = {0};
+    hist_entry weights[256] = {{0}};
+    hist_entry sums[256] = {{0}};
 
     // remap palette
-    for (unsigned int i=0; i < 256; i++) {
-        int best = mapping[i];
+    for (unsigned int val=0; val < 256; val++) {
+        int best = mapping[val];
         if (0==best || 255==best) continue; // those two are guaranteed to be present, so ignore their influence
-        counts[best] += histogram[i];
-        sums[best] += histogram[i] * (double)i;
+        weights[best].color += histogram[val].color;
+        weights[best].alpha += histogram[val].alpha;
+        sums[best].color += histogram[val].color * gamma_to_linear(val);
+        sums[best].alpha += histogram[val].alpha * val;
     }
 
     pal_init(pal);
 
     // rebuild palette from remapped averages
     for(unsigned int i=1; i < 255; i++) {
-        if (counts[i]) {
-            pal_set(pal, floor(sums[i]/counts[i]));
+        if (BOTH(weights[i])) {
+            pal_set(pal, index_from_weights(weights[i], sums[i]));
         }
     }
     pal_set(pal, 0);
@@ -419,6 +467,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Error: cannot read PNG from stdin\n");
         return retval;
     }
+    image_gamma = 1.0/img.gamma;
 
     posterize(&img, maxcolors, maxerror, dither, verbose);
 
@@ -430,16 +479,23 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+
 static void posterize(png24_image *img, unsigned int maxcolors, const double maxerror, bool dither, bool verbose)
 {
-    double histogram[256]={0};
+    hist_entry histogram[256]={{0}};
     intensity_histogram(img, histogram);
 
     // reserve colors for black and white
     // and omit them from histogram to avoid confusing median cut
     unsigned int reservedcolors=0;
-    if (histogram[0] && maxcolors>2) {maxcolors--;reservedcolors++; histogram[0]=0;}
-    if (histogram[255] && maxcolors>2) {maxcolors--;reservedcolors++; histogram[255]=0;}
+    if (BOTH(histogram[0]) >= 1.0 && maxcolors > 2) {
+        maxcolors--;reservedcolors++;
+        histogram[0]=(hist_entry){0,0};
+    }
+    if (BOTH(histogram[255]) >= 1.0 && maxcolors > 2) {
+        maxcolors--;reservedcolors++;
+        histogram[255]=(hist_entry){0,0};
+    }
 
     palette pal;
     unsigned int levels = reduce(maxcolors, maxerror, histogram, &pal);
