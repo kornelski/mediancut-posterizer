@@ -251,42 +251,6 @@ static unsigned int reduce(const unsigned int maxcolors, const double maxerror, 
     return numboxes;
 }
 
-// palette1/2 is for even/odd pixels, allowing very simple "ordered" dithering
-static void remap(png24_image *img, const palette *pal, bool dither)
-{
-    unsigned int mapping1[256], mapping2[256];
-
-    if (dither) {
-        // front to back. When dithering, it's biased towards nextval
-        interpolate_palette_front(pal, mapping1, true);
-
-        // back to front, so dithering bias is the other way.
-        interpolate_palette_back(pal, mapping2);
-    } else {
-        interpolate_palette_front(pal, mapping1, false);
-        memcpy(mapping2, mapping1, sizeof(mapping2));
-    }
-
-    for(unsigned int i=0; i < img->height; i++) {
-        rgba_pixel *const row = (rgba_pixel*)img->row_pointers[i];
-        for(unsigned int j=0; j < img->width; j++) {
-            const unsigned int *map = (i^j)&1 ? mapping1 : mapping2;
-            const rgba_pixel px = row[j];
-            if (map[px.a]) {
-                row[j] = (rgba_pixel){
-                  .r = map[px.r],
-                  .g = map[px.g],
-                  .b = map[px.b],
-                  .a = map[px.a],
-                };
-            } else {
-                // clear "dirty alpha"
-                row[j] = (rgba_pixel){0,0,0,0};
-            }
-        }
-    }
-}
-
 // it doesn't count unique colors, only intensity values of all channels
 static void intensity_histogram(const png24_image *img, hist_entry histogram[static 256])
 {
@@ -458,10 +422,24 @@ static void blur_pixel_differences(int width, unsigned int *diffs)
     }
 }
 
-static void rle_line(rgba_pixel *const row, unsigned int width, unsigned int *diffs, const unsigned int maxerror);
+static void rle_line(rgba_pixel *const row, unsigned int width, unsigned int *diffs, const unsigned int maxerror, const unsigned int mapping1[], const unsigned int mapping2[]);
 
-static void rle(png24_image *img, const double unit_maxerror)
+static void rle(png24_image *img, const double unit_maxerror, const palette *pal, bool dither)
 {
+    unsigned int mapping1[256], mapping2[256];
+
+    if (dither) {
+        // front to back. When dithering, it's biased towards nextval
+        interpolate_palette_front(pal, mapping1, true);
+
+        // back to front, so dithering bias is the other way.
+        interpolate_palette_back(pal, mapping2);
+    } else {
+        interpolate_palette_front(pal, mapping1, false);
+        memcpy(mapping2, mapping1, sizeof(mapping2));
+    }
+
+
     unsigned int maxerror = unit_maxerror * 6.0 * 65536.0; // scale to colordifference output
     unsigned int diffs[img->width];
 
@@ -476,13 +454,35 @@ static void rle(png24_image *img, const double unit_maxerror)
         blur_pixel_differences(img->width, diffs);
 
 
-        rle_line((rgba_pixel*)img->row_pointers[y], img->width, diffs, maxerror);
+        rle_line((rgba_pixel*)img->row_pointers[y], img->width, diffs, maxerror, mapping1, mapping2);
     }
 }
 
-static void rle_line(rgba_pixel *const row, unsigned int width, unsigned int *diffs, const unsigned int maxerror)
+static void remap_line(rgba_pixel *const row, unsigned int width, const unsigned int mapping1[], const unsigned int mapping2[])
 {
-    if (width < 4) return;
+    for(unsigned int j=0; j < width; j++) {
+        const unsigned int *map = ((unsigned int)row ^ j)&1 ? mapping1 : mapping2;// FIXME needs y-offset :(
+        const rgba_pixel px = row[j];
+        if (map[px.a]) {
+            row[j] = (rgba_pixel){
+              .r = map[px.r],
+              .g = map[px.g],
+              .b = map[px.b],
+              .a = map[px.a],
+            };
+        } else {
+            // clear "dirty alpha"
+            row[j] = (rgba_pixel){0,0,0,0};
+        }
+    }
+}
+
+static void rle_line(rgba_pixel *const row, unsigned int width, unsigned int *diffs, const unsigned int maxerror, const unsigned int mapping1[], const unsigned int mapping2[])
+{
+    if (width < 16) {
+        remap_line(row, width, mapping1, mapping2);
+        return;
+    }
 
     unsigned int best_start = 0;
     unsigned int least_diff = diffs[0];
@@ -537,8 +537,8 @@ static void rle_line(rgba_pixel *const row, unsigned int width, unsigned int *di
     } while(!left_stuck || !right_stuck);
 
     unsigned int len = right - left + 1;
-    if (len > 4) {
-        const rgba_pixel avg = (rgba_pixel){
+    if (len > 16) {
+        rgba_pixel avg = (rgba_pixel){
             .r = acc[0] / len,
             .g = acc[1] / len,
             .b = acc[2] / len,
@@ -547,12 +547,16 @@ static void rle_line(rgba_pixel *const row, unsigned int width, unsigned int *di
         for(int x=left; x <= right; x++) {
             row[x] = avg;
         }
+    } else {
+        //left = right = best_start;
+        remap_line(row+left, len, mapping1, mapping2);
     }
-    if (right < width-5) {
-        rle_line(row+right+1, width-right-1, diffs+right+1, maxerror);
+
+    if (right < width-1) {
+        rle_line(row+right+1, width-right-1, diffs+right+1, maxerror, mapping1, mapping2);
     }
-    if (left > 5) {
-        rle_line(row, left-1, diffs, maxerror);
+    if (left > 0) {
+        rle_line(row, left, diffs, maxerror, mapping1, mapping2);
     }
 }
 
@@ -687,6 +691,5 @@ static void posterize(png24_image *img, unsigned int maxcolors, const double max
     }
 
 
-    rle(img, rle_treshold);
-    remap(img, &pal, dither);
+    rle(img, rle_treshold, &pal, dither);
 }
