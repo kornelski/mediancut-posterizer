@@ -209,6 +209,8 @@ pngquant_error rwpng_read_image24_libpng(FILE *infile, png24_image *mainprog_ptr
 
 pngquant_error rwpng_read_image24(FILE *infile, png24_image *input_image_p)
 {
+  if (!infile) return READ_ERROR;
+
 #if USE_COCOA
     return rwpng_read_image24_cocoa(infile, input_image_p);
 #else
@@ -219,8 +221,9 @@ pngquant_error rwpng_read_image24(FILE *infile, png24_image *input_image_p)
 
 static pngquant_error rwpng_write_image_init(rwpng_png_image *mainprog_ptr, png_structpp png_ptr_p, png_infopp info_ptr_p, FILE *outfile, int fast_compression)
 {
-    /* could also replace libpng warning-handler (final NULL), but no need: */
+    if (!outfile) return CANT_WRITE_ERROR;
 
+    /* could also replace libpng warning-handler (final NULL), but no need: */
     *png_ptr_p = png_create_write_struct(PNG_LIBPNG_VER_STRING, mainprog_ptr, rwpng_error_handler, NULL);
 
     if (!(*png_ptr_p)) {

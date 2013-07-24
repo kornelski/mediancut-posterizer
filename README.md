@@ -6,14 +6,14 @@ The goal of this tool is to make RGB/RGBA PNG images more compressible, assuming
 
 ##Usage
 
-    posterize [ -v ] [ -d ] [ -q <quality> ] [ levels ] < input.png > output.png
+    posterize [ -v ] [ -d ] [ -Q <quality> ] [ levels ] -- [ input.png ] [ output.png ]
 
 * `levels` — Number of levels to use (2-255). Lower number gives worse quality, but smaller file.
-* `-q num` — Picks minimum number of levels needed to achieve given quality. `num` is quality 0-100 (100 is best, similar to JPEG). Number of levels is optional if quality is specified.
+* `-Q num` — Picks minimum number of levels needed to achieve given quality. `num` is quality 0-100 (100 is best, similar to JPEG). Number of levels is optional if quality is specified.
 * `-d` — Enables simple ordered dithering.
 * `-v` — Verbose output. Prints mean square error (MSE) caused by posterization.
 
-Only stdin/stdout is supported.
+If input/output files are not specified then stdin/stdout is used respectively.
 
 Posterized images can be further compressed using [PNGOUT](http://www.jonof.id.au/kenutils) or similar. Try [ImageOptim](http://imageoptim.com).
 

@@ -355,12 +355,12 @@ static void usage(const char *exepath)
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
     fprintf(stderr, "Median Cut PNG Posterizer 1.6 (2013).\n" \
-    "Usage: %s [-vd] [-Q <quality>] [levels]\n\n" \
+    "Usage: %s [-vd] [-Q <quality>] [levels] [input file] [output file]\n\n" \
     "Specify number of levels (2-255) or quality (10-100).\n" \
     "-d enables dithering\n" \
     "-v verbose output (to stderr)\n\n" \
-    "Image is always read from stdin and written to stdout.\n"
-    "%s -d 16 < in.png > out.png\n", name, name);
+    "If files are not specified stdin and stdout is used.\n"
+    "%s -Q 95 in.png out.png\n", name, name);
 }
 
 // performs voronoi iteration (mapping histogram to palette and creating new palette from remapped values)
@@ -457,7 +457,26 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (argc != argn || maxlevels < 2 || maxlevels > 255) {
+    if (maxlevels < 2 || maxlevels > 255) {
+        usage(argv[0]);
+        return 1;
+    }
+
+    FILE *input = stdin;
+    const char *input_name = "stdin";
+    if (argn < argc && 0 != strcmp("-",argv[argn])) {
+        input_name = argv[argn++];
+        input = fopen(input_name, "rb");
+    }
+
+    FILE *output = stdout;
+    const char *output_name = "stdout";
+    if (argn < argc && 0 != strcmp("-",argv[argn])) {
+        output_name = argv[argn++];
+        output = fopen(output_name, "wb");
+    }
+
+    if (argn != argc) {
         usage(argv[0]);
         return 1;
     }
@@ -468,18 +487,21 @@ int main(int argc, char *argv[])
     png24_image img;
     pngquant_error retval;
 
-    if ((retval = rwpng_read_image24(stdin, &img))) {
-        fprintf(stderr, "Error: cannot read PNG from stdin\n");
+    if ((retval = rwpng_read_image24(input, &img))) {
+        fprintf(stderr, "Error: cannot read PNG from %s\n", input_name);
         return retval;
     }
+    if (input != stdin) fclose(input);
+
     image_gamma = 1.0/img.gamma;
 
     posterize(&img, maxlevels, maxerror, dither, verbose);
 
-    if ((retval = rwpng_write_image24(stdout, &img))) {
-        fprintf(stderr, "Error: cannot write PNG to stdout\n");
+    if ((retval = rwpng_write_image24(output, &img))) {
+        fprintf(stderr, "Error: cannot write PNG to %s\n", output_name);
         return retval;
     }
+    if (output != stdout) fclose(output);
 
     return 0;
 }
