@@ -58,7 +58,7 @@ static void interpolate_palette_front(const palette *pal, unsigned int mapping[]
 static void voronoi(const hist_entry histogram[static 256], palette *pal);
 static double palette_error(const hist_entry histogram[static 256], const palette *palette_orig);
 static void interpolate_palette_back(const palette *pal, unsigned int mapping[]);
-static void posterize(png24_image *img, unsigned int maxcolors, const double maxerror, bool dither, bool verbose);
+static void posterize(png24_image *img, unsigned int maxlevels, const double maxerror, bool dither, bool verbose);
 
 inline static double int_to_linear(unsigned int value)
 {
@@ -184,7 +184,7 @@ static void palette_from_boxes(const struct box boxes[], const int numboxes, con
 /*
  1-dimensional median cut, using variance for "largest" box
 */
-static unsigned int reduce(const unsigned int maxcolors, const double maxerror, const hist_entry histogram[static 256], palette *pal)
+static unsigned int reduce(const unsigned int maxlevels, const double maxerror, const hist_entry histogram[static 256], palette *pal)
 {
     unsigned int numboxes=1;
     struct box boxes[256];
@@ -196,7 +196,7 @@ static unsigned int reduce(const unsigned int maxcolors, const double maxerror, 
     for(unsigned int i=boxes[0].start; i < boxes[0].end; i++) boxes[0].sum += BOTH(histogram[i]);
     boxes[0].variance = 1; // irrelevant for first box
 
-    while(numboxes < maxcolors) {
+    while(numboxes < maxlevels) {
         int boxtosplit=-1;
         double largest=0;
         // pick box to split by choosing one with highest variance
@@ -446,13 +446,18 @@ int main(int argc, char *argv[])
     }
     int argn = optind;
 
-    int maxcolors = maxerror > 0 ? 255 : 0;
-    if (argc==(argn+1)) {
-        maxcolors=atoi(argv[argn]);
-        argn++;
+    int maxlevels = maxerror > 0 ? 255 : 0;
+
+    if (argn < argc) {
+        char *levels_end;
+        unsigned long levels = strtoul(argv[argn], &levels_end, 10);
+        if (levels_end != argv[argn] && '\0' == levels_end[0]) {
+            maxlevels = levels;
+            argn++;
+        }
     }
 
-    if (argc != argn || maxcolors < 2 || maxcolors > 255) {
+    if (argc != argn || maxlevels < 2 || maxlevels > 255) {
         usage(argv[0]);
         return 1;
     }
@@ -469,7 +474,7 @@ int main(int argc, char *argv[])
     }
     image_gamma = 1.0/img.gamma;
 
-    posterize(&img, maxcolors, maxerror, dither, verbose);
+    posterize(&img, maxlevels, maxerror, dither, verbose);
 
     if ((retval = rwpng_write_image24(stdout, &img))) {
         fprintf(stderr, "Error: cannot write PNG to stdout\n");
@@ -480,7 +485,7 @@ int main(int argc, char *argv[])
 }
 
 
-static void posterize(png24_image *img, unsigned int maxcolors, const double maxerror, bool dither, bool verbose)
+static void posterize(png24_image *img, unsigned int maxlevels, const double maxerror, bool dither, bool verbose)
 {
     hist_entry histogram[256]={{0}};
     intensity_histogram(img, histogram);
@@ -488,17 +493,17 @@ static void posterize(png24_image *img, unsigned int maxcolors, const double max
     // reserve colors for black and white
     // and omit them from histogram to avoid confusing median cut
     unsigned int reservedcolors=0;
-    if (BOTH(histogram[0]) >= 1.0 && maxcolors > 2) {
-        maxcolors--;reservedcolors++;
+    if (BOTH(histogram[0]) >= 1.0 && maxlevels > 2) {
+        maxlevels--;reservedcolors++;
         histogram[0]=(hist_entry){0,0};
     }
-    if (BOTH(histogram[255]) >= 1.0 && maxcolors > 2) {
-        maxcolors--;reservedcolors++;
+    if (BOTH(histogram[255]) >= 1.0 && maxlevels > 2) {
+        maxlevels--;reservedcolors++;
         histogram[255]=(hist_entry){0,0};
     }
 
     palette pal;
-    unsigned int levels = reduce(maxcolors, maxerror, histogram, &pal);
+    unsigned int levels = reduce(maxlevels, maxerror, histogram, &pal);
 
     double last_err = INFINITY;
     for(unsigned int j=0; j < 100; j++) {
