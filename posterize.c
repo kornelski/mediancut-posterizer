@@ -72,11 +72,18 @@ inline static unsigned int linear_to_int(const double value)
     return g < 255.0 ? g : 255;
 }
 
+static double image_gamma, gamma_lut[256];
+static void set_gamma(const double gamma)
+{
+    image_gamma = gamma;
+    for(int i=0; i < 256; i++) gamma_lut[i] = pow(int_to_linear(i), gamma);
+}
+
 // Converts gamma 2.2 to linear unit value. Linear color is required for preserving brightness (esp. when dithering).
-double image_gamma = 2.2;
+// call set_gamma first
 inline static double gamma_to_linear(unsigned int value)
 {
-    return pow(int_to_linear(value), image_gamma);
+    return gamma_lut[value];
 }
 
 // Reverses gamma_to_linear.
@@ -493,7 +500,7 @@ int main(int argc, char *argv[])
     }
     if (input != stdin) fclose(input);
 
-    image_gamma = 1.0/img.gamma;
+    set_gamma(1.0/img.gamma);
 
     posterize(&img, maxlevels, maxerror, dither, verbose);
 
