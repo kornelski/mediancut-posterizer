@@ -307,9 +307,13 @@ static void intensity_histogram(const png24_image *img, hist_entry histogram[sta
             // color and alpha are tracked separately, because
             // difference between colors is non-linear (gamma applies)
             // e.g. dark colors are less visually distinct than low alpha values
-            histogram[px.r].color += weight;
-            histogram[px.g].color += weight;
-            histogram[px.b].color += weight;
+            histogram[px.r].color += weight*0.975;
+            histogram[px.g].color += weight*0.975;
+            histogram[px.b].color += weight*0.975;
+            // a little weight in non-gamma values, this is a fudge to fix some banding errors
+            histogram[px.r].alpha += weight*0.025;
+            histogram[px.g].alpha += weight*0.025;
+            histogram[px.b].alpha += weight*0.025;
             histogram[px.a].alpha += 1.0 + 3.0*(1.0-weight);
         }
     }
