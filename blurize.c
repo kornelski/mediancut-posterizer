@@ -66,6 +66,7 @@ static void optimizeForAverageFilter(
     const int filterCenter = 2;
     const int bytesPerPixel = 4;
     const int errorRowCount = 3;
+    const int ditheringPrecision = 256;
     int stride = width * bytesPerPixel;
     colorDelta row0[width + filterWidth - 1], row1[width + filterWidth - 1], row2[width + filterWidth - 1];
     colorDelta *colorError[3] = { row0, row1, row2 };
@@ -92,7 +93,7 @@ static void optimizeForAverageFilter(
                     }
                     int average = (up + left) / 2; // PNG average filter
 
-                    int newValue = diffusion[c] + here - average;
+                    int newValue = diffusion[c]/ditheringPrecision + here - average;
                     newValue += halfStep;
                     newValue -= newValue % quantization;
                     newValue += average;
@@ -100,7 +101,7 @@ static void optimizeForAverageFilter(
                         pixels[offset] = newValue;
                         errorHere = here - newValue;
                     }
-                    colorError[0][x + filterCenter][c] = errorHere;
+                    colorError[0][x + filterCenter][c] = errorHere * ditheringPrecision;
                 }
             }
         }
