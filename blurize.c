@@ -29,32 +29,11 @@ typedef struct {
     unsigned char r,g,b,a;
 } rgba_pixel;
 
-static void usage(const char *exepath)
-{
-    const char *name = strrchr(exepath, '/');
-    if (name) name++; else name = exepath;
-    fprintf(stderr, "Blurizer 1.0 (2013).\n" \
-    "Usage: %s [distortion] [input file] [output file]\n\n" \
-    "Specify distortion (1=tiny, 50=massive) and input/output files.\n" \
-    "If files are not specified stdin and stdout is used.\n"
-    "%s 7 in.png out.png\n", name, name);
-}
-
-#include <unistd.h>
-
-#if defined(WIN32) || defined(__WIN32__)
-#include <fcntl.h>
-#include <io.h>
-#else
-#define setmode(what,ever)
-#endif
-
-
 typedef int colorDelta[4];
 
 static void diffuseColorDeltas(colorDelta **colorError, int x, int *delta);
 
-static void optimizeForAverageFilter(
+void optimizeForAverageFilter(
     unsigned char pixels[],
     int width, int height,
     int quantization) {
@@ -133,74 +112,3 @@ static void diffuseColorDeltas(colorDelta **colorError, int x, int *delta) {
     }
 }
 
-
-int main(int argc, char *argv[])
-{
-    int ch;
-    while ((ch = getopt(argc, argv, "h")) != -1) {
-        switch (ch) {
-            case '?': case 'h':
-            default:
-                usage(argv[0]);
-                return 1;
-        }
-    }
-    int argn = optind;
-
-    int quantization = 7;
-
-    if (argn < argc) {
-        char *levels_end;
-        unsigned long levels = strtoul(argv[argn], &levels_end, 10);
-        if (levels_end != argv[argn] && '\0' == levels_end[0]) {
-            quantization = levels;
-            argn++;
-        }
-    }
-
-    if (quantization < 1 || quantization > 128) {
-        usage(argv[0]);
-        return 1;
-    }
-
-    FILE *input = stdin;
-    const char *input_name = "stdin";
-    if (argn < argc && 0 != strcmp("-",argv[argn])) {
-        input_name = argv[argn++];
-        input = fopen(input_name, "rb");
-    }
-
-    FILE *output = stdout;
-    const char *output_name = "stdout";
-    if (argn < argc && 0 != strcmp("-",argv[argn])) {
-        output_name = argv[argn++];
-        output = fopen(output_name, "wb");
-    }
-
-    if (argn != argc) {
-        usage(argv[0]);
-        return 1;
-    }
-
-    setmode(1, O_BINARY);
-    setmode(0, O_BINARY);
-
-    png24_image img;
-    pngquant_error retval;
-
-    if ((retval = rwpng_read_image24(input, &img))) {
-        fprintf(stderr, "Error: cannot read PNG from %s\n", input_name);
-        return retval;
-    }
-    if (input != stdin) fclose(input);
-
-    optimizeForAverageFilter(img.rgba_data, img.width, img.height, quantization);
-
-    if ((retval = rwpng_write_image24(output, &img, PNG_FILTER_VALUE_AVG))) {
-        fprintf(stderr, "Error: cannot write PNG to %s\n", output_name);
-        return retval;
-    }
-    if (output != stdout) fclose(output);
-
-    return 0;
-}

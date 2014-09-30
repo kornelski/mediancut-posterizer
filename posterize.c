@@ -24,6 +24,11 @@
 #include "png.h"
 #include "rwpng.h"
 
+void optimizeForAverageFilter(
+    unsigned char pixels[],
+    int width, int height,
+    int quantization);
+
 #ifndef MAX
  #define MAX(a,b) ((a)>=(b)?(a):(b))
 #endif
@@ -365,9 +370,10 @@ static void usage(const char *exepath)
 {
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
-    fprintf(stderr, "Median Cut PNG Posterizer 1.6 (2013).\n" \
-    "Usage: %s [-vd] [-Q <quality>] [levels] [input file] [output file]\n\n" \
+    fprintf(stderr, "Median Cut PNG Posterizer 2.0 (2014).\n" \
+    "Usage: %s [-vdb] [-Q <quality>] [levels] [input file] [output file]\n\n" \
     "Specify number of levels (2-255) or quality (10-100).\n" \
+    "-b blurize mode (uses diagonal averaging filter, recommended)\n" \
     "-d enables dithering\n" \
     "-v verbose output (to stderr)\n\n" \
     "If files are not specified stdin and stdout is used.\n"
@@ -438,16 +444,18 @@ static unsigned int mse_to_quality(double mse)
 int main(int argc, char *argv[])
 {
     bool dither = false, verbose = false;
-    double maxerror = 0;
+    bool blurize = false;
+    int quality = 0;
 
     int ch;
-    while ((ch = getopt(argc, argv, "hvdq:Q:")) != -1) {
+    while ((ch = getopt(argc, argv, "hvdq:Q:b")) != -1) {
         switch (ch) {
+            case 'b': blurize = true; break;
             case 'd': dither = true; break;
             case 'v': verbose = true; break;
             case 'q':
             case 'Q':
-                maxerror = quality_to_mse(atol(optarg));
+                quality = atol(optarg);
                 break;
             case '?': case 'h':
             default:
@@ -457,7 +465,7 @@ int main(int argc, char *argv[])
     }
     int argn = optind;
 
-    int maxlevels = maxerror > 0 ? 255 : 0;
+    int maxlevels = quality > 0 ? 255 : 0;
 
     if (argn < argc) {
         char *levels_end;
@@ -506,9 +514,15 @@ int main(int argc, char *argv[])
 
     set_gamma(1.0/img.gamma);
 
-    posterize(&img, maxlevels, maxerror, dither, verbose);
+    if (blurize) {
+        const int quantization = quality ? (103 - quality)/2.6 : 256 - maxlevels;
+        optimizeForAverageFilter(img.rgba_data, img.width, img.height, quantization);
+    } else {
+        double maxerror = quality_to_mse(quality);
+        posterize(&img, maxlevels, maxerror, dither, verbose);
+    }
 
-    if ((retval = rwpng_write_image24(output, &img, PNG_FILTER_VALUE_NONE))) {
+    if ((retval = rwpng_write_image24(output, &img, blurize ? PNG_FILTER_VALUE_AVG : PNG_FILTER_VALUE_NONE))) {
         fprintf(stderr, "Error: cannot write PNG to %s\n", output_name);
         return retval;
     }
