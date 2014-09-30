@@ -318,7 +318,7 @@ pngquant_error rwpng_write_image8(FILE *outfile, png8_image *mainprog_ptr)
     return SUCCESS;
 }
 
-pngquant_error rwpng_write_image24(FILE *outfile, png24_image *mainprog_ptr)
+pngquant_error rwpng_write_image24(FILE *outfile, png24_image *mainprog_ptr, int filter)
 {
     png_structp png_ptr;
     png_infop info_ptr;
@@ -333,6 +333,7 @@ pngquant_error rwpng_write_image24(FILE *outfile, png24_image *mainprog_ptr)
                  0, PNG_COMPRESSION_TYPE_DEFAULT,
                  PNG_FILTER_TYPE_BASE);
 
+    png_set_filter(png_ptr, PNG_FILTER_TYPE_BASE, filter);
 
     png_bytepp row_pointers = rwpng_create_row_pointers(info_ptr, png_ptr, mainprog_ptr->rgba_data, mainprog_ptr->height, 0);
 

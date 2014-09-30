@@ -508,7 +508,7 @@ int main(int argc, char *argv[])
 
     posterize(&img, maxlevels, maxerror, dither, verbose);
 
-    if ((retval = rwpng_write_image24(output, &img))) {
+    if ((retval = rwpng_write_image24(output, &img, PNG_FILTER_VALUE_NONE))) {
         fprintf(stderr, "Error: cannot write PNG to %s\n", output_name);
         return retval;
     }
