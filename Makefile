@@ -1,6 +1,6 @@
 CFLAGSOPT ?= -DNDEBUG -O3 -fstrict-aliasing -ffast-math -funroll-loops -fomit-frame-pointer -ffinite-math-only
 
-CFLAGS ?= -Wall -Wno-unknown-pragmas -I. -I/usr/local/include/ -I/usr/include/ -I/usr/X11/include/ $(CFLAGSOPT)
+CFLAGS ?= -Wall -Wno-unknown-pragmas -I. -I/usr/local/include/libpng16/ -I/usr/local/include/ -I/usr/include/ -I/usr/X11/include/ $(CFLAGSOPT)
 CFLAGS += -std=c99 $(CFLAGSADD)
 
 LDFLAGS ?= -L/usr/local/lib/ -L/usr/lib/ -L/usr/X11/lib/
