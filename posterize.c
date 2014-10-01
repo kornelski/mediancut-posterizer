@@ -506,7 +506,7 @@ int main(int argc, char *argv[])
     png24_image img;
     pngquant_error retval;
 
-    if ((retval = rwpng_read_image24(input, &img))) {
+    if ((retval = rwpng_read_image24(input, &img, verbose))) {
         fprintf(stderr, "Error: cannot read PNG from %s\n", input_name);
         return retval;
     }
