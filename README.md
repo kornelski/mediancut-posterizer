@@ -1,16 +1,23 @@
+# Lossy compressors for true-color PNGs
+
 ## Median Cut PNG Posterizer
 
 Reduces number of distinct color/alpha intensities in the image. Unlike typical posterization, which distributes levels evenly, this one tries to pick levels intelligently using varaince-based Median Cut and Voronoi iteration.
 
 The goal of this tool is to make RGB/RGBA PNG images more compressible, assuming that lower number of unique byte values increses chance of finding repetition and improves efficiency of Huffman coding.
 
-##Usage
+## Blurizer
 
-    posterize [ -v ] [ -d ] [ -Q <quality> ] [ levels ] -- [ input.png ] [ output.png ]
+With `-b` argument it reduces PNG file sizes by selectively blurring the image. It makes image more compressible by making it more predictable for PNG's diagonal average prediction filter.
 
-* `levels` — Number of levels to use (2-255). Lower number gives worse quality, but smaller file.
+## Usage
+
+    posterize [ -v ] [ -b ] [ -d ] [ -Q <quality> ] [ levels ] -- [ input.png ] [ output.png ]
+
+* `-b` — Use blurring instead of posterization (recommended). Without this argument posterization is used.
 * `-Q num` — Picks minimum number of levels needed to achieve given quality. `num` is quality 0-100 (100 is best, similar to JPEG). Number of levels is optional if quality is specified.
-* `-d` — Enables simple ordered dithering.
+* `levels` — Number of levels to use (2-255). Lower number gives worse quality, but smaller file.
+* `-d` — Enables simple ordered dithering in posterization mode.
 * `-v` — Verbose output. Prints mean square error (MSE) caused by posterization.
 
 If input/output files are not specified then stdin/stdout is used respectively.
@@ -25,7 +32,7 @@ Integrated in [ImageAlpha.app](http://pngmini.com).
 
 ### Posterizer
 
-© 2011-2012 Kornel Lesiński.
+© 2011-2014 Kornel Lesiński.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the [GNU General Public License](http://www.gnu.org/copyleft/gpl.html)
