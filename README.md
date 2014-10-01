@@ -1,4 +1,4 @@
-#Median Cut PNG Posterizer
+## Median Cut PNG Posterizer
 
 Reduces number of distinct color/alpha intensities in the image. Unlike typical posterization, which distributes levels evenly, this one tries to pick levels intelligently using varaince-based Median Cut and Voronoi iteration.
 
@@ -17,13 +17,13 @@ If input/output files are not specified then stdin/stdout is used respectively.
 
 Posterized images can be further compressed using [PNGOUT](http://www.jonof.id.au/kenutils) or similar. Try [ImageOptim](http://imageoptim.com).
 
-##GUI?
+## GUI?
 
 Integrated in [ImageAlpha.app](http://pngmini.com).
 
-##Licenses
+## Licenses
 
-###Posterizer
+### Posterizer
 
 © 2011-2012 Kornel Lesiński.
 
