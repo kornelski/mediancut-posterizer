@@ -247,7 +247,7 @@ static unsigned int reduce(const unsigned int maxlevels, const double maxerror, 
         boxes[boxtosplit].variance = variance(boxes[boxtosplit], histogram);
         numboxes++;
 
-        if (maxerror > 0) {
+        if (maxerror > 0 && maxerror != INFINITY) {
             palette_from_boxes(boxes, numboxes, histogram, pal);
 
             voronoi(histogram, pal);
