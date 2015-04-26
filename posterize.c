@@ -370,7 +370,7 @@ static void usage(const char *exepath)
 {
     const char *name = strrchr(exepath, '/');
     if (name) name++; else name = exepath;
-    fprintf(stderr, "Median Cut PNG Posterizer 2.0 (2014).\n" \
+    fprintf(stderr, "Median Cut PNG Posterizer 2.1 (2015).\n" \
     "Usage: %s [-vdb] [-Q <quality>] [levels] [input file] [output file]\n\n" \
     "Specify number of levels (2-255) or quality (10-100).\n" \
     "-b blurize mode (uses diagonal averaging filter, recommended)\n" \
