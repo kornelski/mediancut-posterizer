@@ -21,6 +21,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <getopt.h>
 #include "png.h"
 #include "rwpng.h"
 
