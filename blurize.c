@@ -48,7 +48,7 @@ void optimizeForAverageFilter(
     const int ditheringPrecision = 256;
     int stride = width * bytesPerPixel;
     colorDelta row0[width + filterWidth - 1], row1[width + filterWidth - 1], row2[width + filterWidth - 1];
-    colorDelta *colorError[3] = { row0, row1, row2 };
+    colorDelta *colorError[3] = { row0, row1, row2 }, *colorTemp;
 
     memset(row0, 0, sizeof(row0));
     memset(row1, 0, sizeof(row1));
@@ -84,9 +84,11 @@ void optimizeForAverageFilter(
                 }
             }
         }
-        for(int i = 0; i < errorRowCount; i++) {
-            colorError[(i+1) % errorRowCount] = colorError[i];
+        colorTemp = colorError[0];
+        for(int i = 0; i < errorRowCount-1; i++) {
+            colorError[i] = colorError[i+1];
         }
+        colorError[errorRowCount-1] = colorTemp;
     }
 }
 
