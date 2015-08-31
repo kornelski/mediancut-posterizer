@@ -84,11 +84,11 @@ void optimizeForAverageFilter(
                 }
             }
         }
-        colorTemp = colorError[0];
-        for(int i = 0; i < errorRowCount-1; i++) {
-            colorError[i] = colorError[i+1];
+        colorTemp = colorError[errorRowCount-1];
+        for(int i = errorRowCount-1; i > 0; i--) {
+            colorError[i] = colorError[i-1];
         }
-        colorError[errorRowCount-1] = colorTemp;
+        colorError[0] = colorTemp;
     }
 }
 
